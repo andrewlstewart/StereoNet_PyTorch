@@ -1,4 +1,19 @@
 """
+Written by Andrew Stewart (andrewlstewart@gmail.com)
+
+Two repos were relied on heavily to inform the network (along with the actual paper)
+X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
+ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
+
+I believe ZhiXuanLi's repo follows the paper best up until line 107 (note their CostVolume computation is incorrect)
+    https://github.com/zhixuanli/StereoNet/issues/12#issuecomment-508327106
+
+X-StereoLab is good up until line 180.  X-StereoLabl return both the up sampled and refined independently and don't perform the final ReLU.
+
+I believe the implementation that I have written takes the best of both repos and follows the paper most closely.
+
+Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follows X-Stereo but not ZhiXuanLi, the latter do it reverse order).
+
 """
 
 from collections import OrderedDict
@@ -11,21 +26,6 @@ import numpy as np
 
 
 class StereoNet(pl.LightningModule):
-    """
-    Two repos were relied on heavily to inform the network (along with the actual paper)
-    X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
-    ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
-
-    I believe ZhiXuanLi's repo follows the paper best up until line 107 (note their CostVolume computation is incorrect)
-        https://github.com/zhixuanli/StereoNet/issues/12#issuecomment-508327106
-    
-    X-StereoLab is good up until line 180.  Further, they return both the up sampled and refined independently.
-
-    I believe the implementation that I have written takes the best of both and follows the paper.
-
-    Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follow X-Stereo but not ZhiXuanLi, the latter do it reverse order).
-
-    """
     def __init__(self, k_downsampling_layers: int = 4, candidate_disparities: int = 192):
         super().__init__()
         self.k = k_downsampling_layers
