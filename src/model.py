@@ -2,6 +2,7 @@
 Written by Andrew Stewart (andrewlstewart@gmail.com)
 
 Two repos were relied on heavily to inform the network (along with the actual paper)
+Original paper: https://arxiv.org/abs/1807.08865
 X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
 ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
 
@@ -16,6 +17,7 @@ Noteably, the argmin'd disparity is computed prior to the bilinear interpolation
 
 """
 
+from typing import Optional, Tuple
 from collections import OrderedDict
 
 import torch
@@ -26,7 +28,7 @@ import numpy as np
 
 
 class StereoNet(pl.LightningModule):
-    def __init__(self, k_downsampling_layers: int = 4, candidate_disparities: int = 192):
+    def __init__(self, k_downsampling_layers: int = 4, candidate_disparities: int = 192, disparity_range: Optional[Tuple[float, float]] = None):
         super().__init__()
         self.k = k_downsampling_layers
         self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
@@ -40,7 +42,11 @@ class StereoNet(pl.LightningModule):
         # Hierarchical Refinement: Edge-Aware Upsampling
         self.refiner = Refinement()
 
-    def forward(self, x):
+        if disparity_range is None:
+            disparity_range = (-float("inf"),float("inf"))
+        self.disparity_range = disparity_range
+
+    def forward(self, x: Tuple[torch.Tensor]):
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -59,10 +65,20 @@ class StereoNet(pl.LightningModule):
         return disparity
 
     def training_step(self, batch, batch_idx):
-        pass
+        left = batch['left']
+        right = batch['right']
+        disp_gt = batch['disp']
+
+        disp_pred = self((left, right))
+
+        mask = torch.logical_or(disp_gt > self.disparity_range[0], disp_gt < self.disparity_range[1])
+        mask.detach_()
+
+        loss = F.smooth_l1_loss(disp_pred[mask], disp_gt[mask])
+        return loss
 
     def configure_optimizers(self):
-        pass
+        return torch.optim.Adam(self.parameters(), lr=1e-3)
 
 
 class FeatureExtractor(torch.nn.Module):
@@ -187,7 +203,7 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
     disparity_softmax = F.softmax(-cost, dim=1)
 
     # Effectively does what disparityregression does on line 119 of the X-StereoLab permalink above
-    disparity_grid = torch.range(0,max_disps-1).reshape((max_disps, 1, 1)).repeat(disparity_softmax.size()[0],disparity_softmax.size()[1]//max_disps,disparity_softmax.size()[2],disparity_softmax.size()[3])
+    disparity_grid = torch.arange(0,max_disps).reshape((max_disps, 1, 1)).repeat(disparity_softmax.size()[0],disparity_softmax.size()[1]//max_disps,disparity_softmax.size()[2],disparity_softmax.size()[3])
     disparity_grid = disparity_grid.type_as(disparity_softmax)
 
     disp = torch.sum(disparity_softmax * disparity_grid, dim=1, keepdim=True)
