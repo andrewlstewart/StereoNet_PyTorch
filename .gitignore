@@ -128,5 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# VSCode
+.vscode/
+
 # PyTorch Lightning loggers
 lightning_logs/
