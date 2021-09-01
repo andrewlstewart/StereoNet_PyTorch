@@ -53,7 +53,7 @@ def main():
         utils.ToTensor(),
         utils.Rescale(),
         utils.RandomResizedCrop(output_size=args.crop_size, scale=(0.8, 1.0), randomizer=random_generator),  # TODO: Random rotation?
-        utils.RandomHorizontalFlip(p=0.5, randomizer=random_generator)
+        #utils.RandomHorizontalFlip(p=0.5, randomizer=random_generator)
         # TODO: Color jitter?
     ]
     train_dataset = utils.SceneflowDataset(args.sceneflow_root, string_exclude='TEST', transforms=train_transforms)
