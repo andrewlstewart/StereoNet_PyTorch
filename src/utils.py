@@ -127,8 +127,8 @@ class RandomResizedCrop:
         for name, x in sample.items():
             x = T.functional.crop(x, top=top, left=left, height=scaled_h, width=scaled_w)
             x = T.functional.resize(x, size=(output_h, output_w))
-            assert output_h > self.output_size[0]
-            assert output_w > self.output_size[1]
+            assert output_h >= self.output_size[0]
+            assert output_w >= self.output_size[1]
             x = T.functional.crop(x, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])
             sample[name] = x
         return sample
