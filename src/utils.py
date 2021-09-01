@@ -153,6 +153,16 @@ class RandomHorizontalFlip:
         return sample
 
 
+class Rescale:
+    """
+    Rescales the left and right image tensors (initially ranged between [0, 1]) and rescales them to be between [-1, 1].
+    """
+    def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
+        for name in ['left', 'right']:
+            sample[name] = (sample[name] - 0.5) * 2
+        return sample
+
+
 def main():
     random_generator = np.random.default_rng(seed=42)
     train_transforms = [
