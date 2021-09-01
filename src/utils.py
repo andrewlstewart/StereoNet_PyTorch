@@ -104,7 +104,7 @@ class RandomResizedCrop:
         self.randomizer = randomizer
 
     def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
-        random_scale = self.randomizer.random()*(self.scale[1]-self.scale[0]) + self.scale[0]
+        random_scale = self.randomizer.random() * (self.scale[1]-self.scale[0]) + self.scale[0]
 
         h, w = sample['left'].size()[-2:]
         scaled_h, scaled_w = int(h*random_scale), int(w*random_scale)
@@ -114,6 +114,12 @@ class RandomResizedCrop:
 
         larger_length = self.output_size[0]/scaled_h if (self.output_size[0]*scaled_h) > (self.output_size[1]*scaled_w) else self.output_size[1]/scaled_w
         output_h, output_w = int(larger_length*scaled_h), int(larger_length*scaled_w)
+        
+        # TODO: This should probably catch harmonics as well, not sure near equals.
+        if np.isclose(output_h, self.output_size[0], rtol=0.01):
+            output_h = self.output_size[0]
+        if np.isclose(output_w, self.output_size[1], rtol=0.01):
+            output_w = self.output_size[1]
 
         resized_top = int(self.randomizer.random()*(output_h - self.output_size[0]))
         resized_left = int(self.randomizer.random()*(output_w - self.output_size[1]))
@@ -121,6 +127,8 @@ class RandomResizedCrop:
         for name, x in sample.items():
             x = T.functional.crop(x, top=top, left=left, height=scaled_h, width=scaled_w)
             x = T.functional.resize(x, size=(output_h, output_w))
+            assert output_h > self.output_size[0]
+            assert output_w > self.output_size[1]
             x = T.functional.crop(x, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])
             sample[name] = x
         return sample
@@ -132,6 +140,7 @@ class ToTensor:
     Left and right uint8 images get rescaled to [0,1] floats.  
     Disparities are already floats and just get turned into tensors.
     """
+
     def __call__(self, sample: Dict[str, np.ndarray]) -> Dict[str, torch.FloatTensor]:
         for name, x in sample.items():
             sample[name] = T.functional.to_tensor(x)
@@ -142,6 +151,7 @@ class RandomHorizontalFlip:
     """
     Randomly flip all 3 tensors at the same time.
     """
+
     def __init__(self, p: float, randomizer: np.random.Generator = np.random):
         self.p = p
         self.randomizer = randomizer
@@ -157,6 +167,7 @@ class Rescale:
     """
     Rescales the left and right image tensors (initially ranged between [0, 1]) and rescales them to be between [-1, 1].
     """
+
     def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
         for name in ['left', 'right']:
             sample[name] = (sample[name] - 0.5) * 2
