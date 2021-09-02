@@ -86,7 +86,7 @@ class StereoNet(pl.LightningModule):
 
         disp_pred = self((left, right))
 
-        loss = F.smooth_l1_loss(disp_pred, disp_gt)
+        loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss", loss, on_epoch=True, logger=True)
 
     def configure_optimizers(self):
