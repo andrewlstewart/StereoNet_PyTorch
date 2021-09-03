@@ -27,8 +27,9 @@ class Tuplelify(argparse.Action):
 def parse_train_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--sceneflow_root', type=Path, help="Root path containing the sceneflow folders containing the images and disparities.")
-    parser.add_argument('--disparity_range', action=Tuplelify, default=(0,192))
-
+    parser.add_argument('--k_downsampling_layers', type=int, default=3)
+    parser.add_argument('--k_refinement_layers', type=int, default=3)
+    
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--min_epochs', type=int, default=10, help="Minimum number of epochs to train.")
     parser.add_argument('--max_epochs', type=int, default=50, help="Maximum number of epochs to train.")
@@ -45,7 +46,7 @@ def main():
     args = parse_train_args()
 
     # Instantiate model with built in optimizer
-    model = StereoNet(disparity_range=args.disparity_range)
+    model = StereoNet(k_downsampling_layers=args.k_downsampling_layers, k_refinement_layers=args.k_refinement_layers)
 
     # Get datasets
     random_generator = np.random.default_rng(seed=args.random_seed)
@@ -53,7 +54,6 @@ def main():
         utils.ToTensor(),
         utils.Rescale(),
         utils.RandomResizedCrop(output_size=args.crop_size, scale=(0.8, 1.0), randomizer=random_generator),  # TODO: Random rotation?
-        #utils.RandomHorizontalFlip(p=0.5, randomizer=random_generator)
         # TODO: Color jitter?
     ]
     train_dataset = utils.SceneflowDataset(args.sceneflow_root, string_exclude='TEST', transforms=train_transforms)

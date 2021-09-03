@@ -17,7 +17,7 @@ Noteably, the argmin'd disparity is computed prior to the bilinear interpolation
 
 """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 from numbers import Number
 from collections import OrderedDict
 
@@ -29,25 +29,24 @@ import numpy as np
 
 
 class StereoNet(pl.LightningModule):
-    def __init__(self, k_downsampling_layers: int = 4, candidate_disparities: int = 192, disparity_range: Optional[Tuple[Number, Number]] = None):
+    def __init__(self, k_downsampling_layers: int = 4, k_refinement_layers: int = 3, candidate_disparities: int = 192):
         super().__init__()
-        self.k = k_downsampling_layers
+        self.k_downsampling_layers = k_downsampling_layers
+        self.k_refinement_layers = k_refinement_layers
         self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
 
         # Feature network
-        self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=32, k_downsampling_layers=self.k)
+        self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=32, k_downsampling_layers=self.k_downsampling_layers)
 
         # Cost volume
         self.cost_volumizer = CostVolume(in_channels=32, out_channels=32, max_disps=self.max_disps)
 
         # Hierarchical Refinement: Edge-Aware Upsampling
-        self.refiner = Refinement()
+        self.refiners = nn.ModuleList()
+        for _ in range(self.k_refinement_layers):
+            self.refiners.append(Refinement())
 
-        if disparity_range is None:
-            disparity_range = (-float("inf"), float("inf"))
-        self.disparity_range = disparity_range
-
-    def forward(self, x: Tuple[torch.Tensor]):
+    def forward_presum(self, x: Tuple[torch.Tensor]):
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -57,11 +56,27 @@ class StereoNet(pl.LightningModule):
 
         disparity_low = soft_argmin(cost, self.max_disps)
 
-        disparity_initial = F.interpolate(disparity_low, [left.shape[2], left.shape[3]], mode='bilinear', align_corners=True)
+        disparities = []
+        disparities.append(disparity_low)
+        for idx, refiner in enumerate(self.refiners, start=1):
+            scale = (2**self.k_refinement_layers) / (2**idx)
+            new_h, new_w = int(left.size()[2]//scale), int(left.size()[3]//scale)
+            left_rescaled = F.interpolate(left, [new_h, new_w], mode='bilinear', align_corners=True)
+            disparity_low_rescaled = F.interpolate(disparity_low, [new_h, new_w], mode='bilinear', align_corners=True)
+            refined_disparity = refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1))
+            disparities.append(refined_disparity)
 
-        disparity_refined = self.refiner(torch.cat((left, disparity_initial), dim=1))
+        for idx, disparity in enumerate(disparities):
+            disparities[idx] = F.interpolate(disparity, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
 
-        disparity = F.relu(disparity_initial + disparity_refined)
+        disparities = torch.stack(disparities, dim=0)
+
+        return disparities
+
+    def forward(self, x: Tuple[torch.Tensor]):
+        disparities = self.forward_presum(x)
+
+        disparity = F.relu(torch.sum(disparities, dim=0))
 
         return disparity
 
@@ -70,12 +85,10 @@ class StereoNet(pl.LightningModule):
         right = batch['right']
         disp_gt = batch['disp']
 
-        disp_pred = self((left, right))
+        disp_pred = self.forward_presum((left, right))
 
-        mask = torch.logical_or(disp_gt > self.disparity_range[0], disp_gt < self.disparity_range[1])
-        mask.detach_()
+        loss = torch.sum(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
 
-        loss = F.smooth_l1_loss(disp_pred[mask], disp_gt[mask])
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
@@ -148,7 +161,7 @@ class CostVolume(torch.nn.Module):
         # Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
         reference_embedding, target_embedding = x
 
-        b, c, h, w = reference_embedding.shape
+        b, c, h, w = reference_embedding.size()
         cost = torch.Tensor(b, c, self.max_disps, h, w).zero_()
         cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
         cost[:, :, 0, :, :] = reference_embedding - target_embedding
@@ -228,6 +241,14 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
     disp = torch.sum(disparity_softmax * disparity_grid, dim=1, keepdim=True)
 
     return disp
+
+
+def robust_loss(x: torch.Tensor, alpha: Number, c: Number) -> torch.Tensor:
+    """
+    https://arxiv.org/abs/1701.03077
+    """
+    f = (abs(alpha - 2) / alpha) * (torch.pow(torch.pow(x / c, 2)/abs(alpha - 2) + 1, alpha/2) - 1)
+    return f
 
 
 def main():
