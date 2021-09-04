@@ -46,7 +46,7 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_presum(self, x: Tuple[torch.Tensor]):
+    def forward_pyramid(self, x: Tuple[torch.Tensor]):
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -63,29 +63,26 @@ class StereoNet(pl.LightningModule):
             new_h, new_w = int(left.size()[2]//scale), int(left.size()[3]//scale)
             left_rescaled = F.interpolate(left, [new_h, new_w], mode='bilinear', align_corners=True)
             disparity_low_rescaled = F.interpolate(disparities[-1], [new_h, new_w], mode='bilinear', align_corners=True)
-            refined_disparity = refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1))
+            refined_disparity = F.relu(refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1)) + disparity_low_rescaled)
             disparities.append(refined_disparity)
-
-        for idx, disparity in enumerate(disparities):
-            disparities[idx] = F.interpolate(disparity, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
-
-        disparities = torch.stack(disparities, dim=0)
 
         return disparities
 
-    def forward(self, x: Tuple[torch.Tensor]):
-        disparities = self.forward_presum(x)
-
-        disparity = F.relu(torch.sum(disparities, dim=0))
-
-        return disparity
+    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:
+        disparities = self.forward_pyramid(x)
+        return disparities[-1]  # Ultimately, only output the last refined disparity
 
     def training_step(self, batch, batch_idx) -> torch.Tensor:
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp']
 
-        disp_pred = self.forward_presum((left, right))
+        disp_pred = self.forward_pyramid((left, right))
+
+        for idx, disparity in enumerate(disp_pred):
+            disp_pred[idx] = F.interpolate(disparity, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
+
+        disp_pred = torch.stack(disp_pred, dim=0)
 
         loss = torch.mean(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
 
