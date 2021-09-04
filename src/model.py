@@ -46,7 +46,7 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_pyramid(self, x: Tuple[torch.Tensor]) -> List[torch.Tensor]:
+    def forward_pyramid(self, x: Tuple[torch.Tensor]) -> List[torch.Tensor]:  # pylint: disable=invalid-name, too-many-locals
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -54,25 +54,23 @@ class StereoNet(pl.LightningModule):
 
         cost = self.cost_volumizer((left_embedding, right_embedding))
 
-        disparity_low = soft_argmin(cost, self.max_disps)
+        disparity_pyramid = [soft_argmin(cost, self.max_disps)]
 
-        disparities = []
-        disparities.append(disparity_low)
         for idx, refiner in enumerate(self.refiners, start=1):
             scale = (2**self.k_refinement_layers) / (2**idx)
             new_h, new_w = int(left.size()[2]//scale), int(left.size()[3]//scale)
             left_rescaled = F.interpolate(left, [new_h, new_w], mode='bilinear', align_corners=True)
-            disparity_low_rescaled = F.interpolate(disparities[-1], [new_h, new_w], mode='bilinear', align_corners=True)
+            disparity_low_rescaled = F.interpolate(disparity_pyramid[-1], [new_h, new_w], mode='bilinear', align_corners=True)
             refined_disparity = F.relu(refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1)) + disparity_low_rescaled)
-            disparities.append(refined_disparity)
+            disparity_pyramid.append(refined_disparity)
 
-        return disparities
+        return disparity_pyramid
 
-    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:
+    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:  # pylint: disable=arguments-differ
         disparities = self.forward_pyramid(x)
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:
+    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:  # pylint: disable=arguments-differ, unused-argument
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp']
@@ -90,7 +88,7 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(F.relu(torch.sum(disp_pred, dim=0)), disp_gt), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:  # pylint: disable=arguments-differ, unused-argument
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp']
@@ -128,7 +126,7 @@ class FeatureExtractor(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
         x = self.net(x)
         return x
 
@@ -155,11 +153,11 @@ class CostVolume(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:
+    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:  # pylint: disable=invalid-name
         # Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
         reference_embedding, target_embedding = x
 
-        b, c, h, w = reference_embedding.size()
+        b, c, h, w = reference_embedding.size()  # pylint: disable=invalid-name
         cost = torch.Tensor(b, c, self.max_disps, h, w).zero_()
         cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
         cost[:, :, 0, :, :] = reference_embedding - target_embedding
@@ -190,7 +188,7 @@ class Refinement(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
         x = self.net(x)
         return x
 
@@ -213,7 +211,7 @@ class ResBlock(torch.nn.Module):
         self.batch_norm_2 = nn.BatchNorm2d(num_features=out_channels)
         self.activation_2 = nn.LeakyReLU(negative_slope=0.2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
         # Original Residual Unit: https://arxiv.org/pdf/1603.05027.pdf (Fig 1. Left)
 
         res = self.conv_1(x)
@@ -241,18 +239,19 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
     return disp
 
 
-def robust_loss(x: torch.Tensor, alpha: Number, c: Number) -> torch.Tensor:
+def robust_loss(x: torch.Tensor, alpha: Number, c: Number) -> torch.Tensor:  # pylint: disable=invalid-name
     """
     https://arxiv.org/abs/1701.03077
     """
-    f = (abs(alpha - 2) / alpha) * (torch.pow(torch.pow(x / c, 2)/abs(alpha - 2) + 1, alpha/2) - 1)
+    f = (abs(alpha - 2) / alpha) * (torch.pow(torch.pow(x / c, 2)/abs(alpha - 2) + 1, alpha/2) - 1)  # pylint: disable=invalid-name
     return f
 
 
 def main():
+    # TODO: Move this to a test function
     model = StereoNet()
     data = (torch.from_numpy(np.ones((2, 3, 540, 960), dtype=np.float32)), torch.from_numpy(np.ones((2, 3, 540, 960), dtype=np.float32)))
-    output = model(data)
+    output = model(data)  # pylint: disable=unused-variable
 
 
 if __name__ == "__main__":
