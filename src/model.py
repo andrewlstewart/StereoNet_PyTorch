@@ -62,7 +62,7 @@ class StereoNet(pl.LightningModule):
             scale = (2**self.k_refinement_layers) / (2**idx)
             new_h, new_w = int(left.size()[2]//scale), int(left.size()[3]//scale)
             left_rescaled = F.interpolate(left, [new_h, new_w], mode='bilinear', align_corners=True)
-            disparity_low_rescaled = F.interpolate(disparity_low, [new_h, new_w], mode='bilinear', align_corners=True)
+            disparity_low_rescaled = F.interpolate(disparities[-1], [new_h, new_w], mode='bilinear', align_corners=True)
             refined_disparity = refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1))
             disparities.append(refined_disparity)
 
@@ -87,9 +87,10 @@ class StereoNet(pl.LightningModule):
 
         disp_pred = self.forward_presum((left, right))
 
-        loss = torch.sum(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
+        loss = torch.mean(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
 
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        self.log("train_loss_epoch", F.l1_loss(F.relu(torch.sum(disp_pred, dim=0)), disp_gt), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx) -> None:
@@ -100,7 +101,7 @@ class StereoNet(pl.LightningModule):
         disp_pred = self((left, right))
 
         loss = F.l1_loss(disp_pred, disp_gt)
-        self.log("val_loss", loss, on_epoch=True, logger=True)
+        self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)

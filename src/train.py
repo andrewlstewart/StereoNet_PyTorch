@@ -29,12 +29,12 @@ def parse_train_args():
     parser.add_argument('--sceneflow_root', type=Path, help="Root path containing the sceneflow folders containing the images and disparities.")
     parser.add_argument('--k_downsampling_layers', type=int, default=3)
     parser.add_argument('--k_refinement_layers', type=int, default=3)
-    
+
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--min_epochs', type=int, default=10, help="Minimum number of epochs to train.")
     parser.add_argument('--max_epochs', type=int, default=50, help="Maximum number of epochs to train.")
     parser.add_argument('--random_seed', type=int, default=42, help="Random seed used in the image transforms (not related to image selection in batches)")
-    parser.add_argument('--crop_size', action=Tuplelify, default=(540,960), help="Size to crop the images to during the random crops for training.")
+    parser.add_argument('--crop_size', action=Tuplelify, default=(540, 960), help="Size to crop the images to during the random crops for training.")
 
     parser.add_argument('--num_gpus', type=int, default=0, help="Number of GPUs to use.")
 
@@ -57,12 +57,12 @@ def main():
         # TODO: Color jitter?
     ]
     train_dataset = utils.SceneflowDataset(args.sceneflow_root, string_exclude='TEST', transforms=train_transforms)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8, drop_last = False)
-    
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8, drop_last=False)
+
     val_transforms = [utils.ToTensor(), utils.Rescale()]
     val_dataset = utils.SceneflowDataset(args.sceneflow_root, string_include='TEST', transforms=val_transforms)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last = False)
-    
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last=False)
+
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     logger = TensorBoardLogger(save_dir=Path.cwd(), name="lightning_logs")
     trainer = pl.Trainer(gpus=args.num_gpus, min_epochs=args.min_epochs, max_epochs=args.max_epochs, logger=logger, callbacks=[lr_monitor], checkpoint_callback=True)
@@ -70,6 +70,7 @@ def main():
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
     print('stall')
+
 
 if __name__ == "__main__":
     main()

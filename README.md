@@ -8,7 +8,7 @@ Currently implemented
 
 * Downsampling feature network with `k_downsampling_layers`
 * Cost volume filtering
-* Hierarchical refinement with `k_refinement_layers`
+* Hierarchical refinement with cascading `k_refinement_layers`
 * Robust loss function [A General and Adaptive Robust Loss Function, Barron (2019)](https://arxiv.org/abs/1701.03077)
 
 Currently unclear
