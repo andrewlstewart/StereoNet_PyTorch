@@ -17,7 +17,7 @@ Noteably, the argmin'd disparity is computed prior to the bilinear interpolation
 
 """
 
-from typing import Optional, Tuple, Dict
+from typing import Tuple, Dict, List
 from numbers import Number
 from collections import OrderedDict
 
@@ -46,7 +46,7 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_pyramid(self, x: Tuple[torch.Tensor]):
+    def forward_pyramid(self, x: Tuple[torch.Tensor]) -> List[torch.Tensor]:
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -72,7 +72,7 @@ class StereoNet(pl.LightningModule):
         disparities = self.forward_pyramid(x)
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch, batch_idx) -> torch.Tensor:
+    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp']
@@ -90,7 +90,7 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(F.relu(torch.sum(disp_pred, dim=0)), disp_gt), on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    def validation_step(self, batch, batch_idx) -> None:
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp']
@@ -128,7 +128,7 @@ class FeatureExtractor(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.net(x)
         return x
 
@@ -155,7 +155,7 @@ class CostVolume(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x):
+    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:
         # Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
         reference_embedding, target_embedding = x
 
@@ -190,7 +190,7 @@ class Refinement(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.net(x)
         return x
 
@@ -213,7 +213,7 @@ class ResBlock(torch.nn.Module):
         self.batch_norm_2 = nn.BatchNorm2d(num_features=out_channels)
         self.activation_2 = nn.LeakyReLU(negative_slope=0.2)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Original Residual Unit: https://arxiv.org/pdf/1603.05027.pdf (Fig 1. Left)
 
         res = self.conv_1(x)
