@@ -107,7 +107,7 @@ class StereoNet(pl.LightningModule):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                   "frequency": 4,  #TODO: Set this automatically to the batch size
+                   "frequency": 4,  #TODO: Set this automatically to the crop factor
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
         return config
