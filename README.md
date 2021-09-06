@@ -4,6 +4,12 @@
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
+Currently training, early results are ok.  Validation EPE $\approx20$ pixels.  Still need to implement the left/right disparity training vs just using the left disparity.
+
+Epoch 10:
+
+<img src="./readme_images/Epoch_10_Val.JPG" alt="Validation image" style="width:1000px;"/>
+
 Implemented using PyTorch Lightning as a learning exercise to learn about stereo networks, PyTorch, and PyTorch lightning.  Feel free to make any comments or recommendations for better coding practice.
 
 Currently implemented

@@ -180,13 +180,19 @@ def plot_figure(left, right, disp_gt, disp_pred):
     fig, ax = plt.subplots(ncols=2, nrows=2)
     left = (torch.moveaxis(left, 0, 2) + 1) / 2
     right = (torch.moveaxis(right, 0, 2) + 1) / 2
-    disp_gt = (torch.moveaxis(disp_gt, 0, 2)-disp_gt.min())/(disp_gt.max()-disp_gt.min())
-    disp_pred = (torch.moveaxis(disp_pred, 0, 2)-disp_gt.min())/(disp_gt.max()-disp_gt.min())
+    disp_gt = torch.moveaxis(disp_gt, 0, 2)
+    disp_pred = torch.moveaxis(disp_pred, 0, 2)
     ax[0, 0].imshow(left)
     ax[0, 1].imshow(right)
-    ax[1, 0].imshow(disp_gt)
-    ax[1, 1].imshow(disp_pred)
-    plt.tight_layout()
+    ax[1, 0].imshow(disp_gt, vmin=disp_gt.min(), vmax=disp_gt.max())
+    im = ax[1, 1].imshow(disp_pred, vmin=disp_gt.min(), vmax=disp_gt.max())
+    ax[0, 0].title.set_text('Left')
+    ax[0, 1].title.set_text('Right')
+    ax[1, 0].title.set_text('Ground truth disparity')
+    ax[1, 1].title.set_text('Predicted disparity')
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.27])
+    fig.colorbar(im, cax=cbar_ax)
     return fig
 
 
