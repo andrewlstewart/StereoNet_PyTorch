@@ -4,12 +4,9 @@
 from pathlib import Path
 import argparse
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import LearningRateMonitor
+import matplotlib.pyplot as plt
 
 from src.model import StereoNet
 import src.utils as utils
@@ -41,14 +38,14 @@ def main():
 
     device = torch.device("cuda:0" if args.gpu else "cpu")
 
-    model = StereoNet.load_from_checkpoint(args.checkpoint_path)
+    model = StereoNet(k_downsampling_layers=3, k_refinement_layers=3, candidate_disparities=192).load_from_checkpoint(args.checkpoint_path)
     model.to(device)
     model.eval()
 
     val_transforms = [utils.ToTensor(), utils.Rescale()]
     val_dataset = utils.SceneflowDataset(args.sceneflow_root, string_include='TEST', transforms=val_transforms)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last = False)
-    
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last=False)
+
     samples = 0
     loss = 0
     for batch in val_loader:
@@ -62,6 +59,7 @@ def main():
     print(f'Validation EPE: {loss/samples}')
 
     print('stall')
+
 
 if __name__ == "__main__":
     main()

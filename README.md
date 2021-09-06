@@ -16,3 +16,5 @@ Currently implemented
 Currently unclear
 
 * "We found that, intuitively, training with the left and right disparity maps for an image pair at the same time significantly sped up the training time." Page 9.  Does that mean for each left/right RGB image pair, they compute the loss for the left disparity and the loss for the right disparity and then sum?  I need to investigate.
+
+    * I think maybe I need to compute 2 cost volumes and then have 2 passes through the cascading refiner.  I'll think.

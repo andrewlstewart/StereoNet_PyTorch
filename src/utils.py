@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from skimage import io
 import torchvision.transforms as T
+import matplotlib.pyplot as plt
 
 import src.utils_io as utils_io
 
@@ -114,7 +115,7 @@ class RandomResizedCrop:
 
         larger_length = self.output_size[0]/scaled_h if (self.output_size[0]*scaled_h) > (self.output_size[1]*scaled_w) else self.output_size[1]/scaled_w
         output_h, output_w = int(larger_length*scaled_h), int(larger_length*scaled_w)
-        
+
         # TODO: This should probably catch harmonics as well, not sure near equals.
         if np.isclose(output_h, self.output_size[0], rtol=0.01):
             output_h = self.output_size[0]
@@ -127,7 +128,7 @@ class RandomResizedCrop:
         for name, x in sample.items():
             x = T.functional.crop(x, top=top, left=left, height=scaled_h, width=scaled_w)
             x = T.functional.resize(x, size=(output_h, output_w))
-            assert output_h >= self.output_size[0] # TODO: Remove or make exceptions
+            assert output_h >= self.output_size[0]  # TODO: Remove or make exceptions
             assert output_w >= self.output_size[1]
             x = T.functional.crop(x, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])
             sample[name] = x
@@ -172,6 +173,21 @@ class Rescale:
         for name in ['left', 'right']:
             sample[name] = (sample[name] - 0.5) * 2
         return sample
+
+
+def plot_figure(left, right, disp_gt, disp_pred):
+    plt.close('all')
+    fig, ax = plt.subplots(ncols=2, nrows=2)
+    left = (torch.moveaxis(left, 0, 2) + 1) / 2
+    right = (torch.moveaxis(right, 0, 2) + 1) / 2
+    disp_gt = (torch.moveaxis(disp_gt, 0, 2)-disp_gt.min())/(disp_gt.max()-disp_gt.min())
+    disp_pred = (torch.moveaxis(disp_pred, 0, 2)-disp_gt.min())/(disp_gt.max()-disp_gt.min())
+    ax[0, 0].imshow(left)
+    ax[0, 1].imshow(right)
+    ax[1, 0].imshow(disp_gt)
+    ax[1, 1].imshow(disp_pred)
+    plt.tight_layout()
+    return fig
 
 
 def main():

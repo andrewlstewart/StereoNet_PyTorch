@@ -27,9 +27,11 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 import numpy as np
 
+import src.utils as utils
+
 
 class StereoNet(pl.LightningModule):
-    def __init__(self, k_downsampling_layers: int = 4, k_refinement_layers: int = 3, candidate_disparities: int = 192):
+    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 192):
         super().__init__()
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
@@ -84,8 +86,8 @@ class StereoNet(pl.LightningModule):
 
         loss = torch.mean(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
 
-        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        self.log("train_loss_epoch", F.l1_loss(F.relu(torch.sum(disp_pred, dim=0)), disp_gt), on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log("train_loss_step", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+        self.log("train_loss_epoch", F.l1_loss(disp_pred[-1], disp_gt), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:  # pylint: disable=arguments-differ, unused-argument
@@ -97,12 +99,15 @@ class StereoNet(pl.LightningModule):
 
         loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
+        if batch_idx == 0:
+            fig = utils.plot_figure(left[0].detach().cpu(), right[0].detach().cpu(), disp_gt[0].detach().cpu(), disp_pred[0].detach().cpu())
+            self.logger.experiment.add_figure("generated_images", fig, self.current_epoch, close=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                   "frequency": 1,
+                   "frequency": 4,  #TODO: Set this automatically to the batch size
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
         return config
