@@ -25,6 +25,13 @@ class TestModel(unittest.TestCase):  # pylint: disable=missing-class-docstring
         for (model, _) in self.models:
             model.eval()
 
+    def test_model_trainable_parameters(self):
+        """
+        Test to see if the number of trainable parameters matches the expected number.
+        """
+        for model, n_params in self.models:
+            self.assertEqual(self.count_parameters(model), n_params)
+
     def test_forward_sizes(self):
         """
         Test to see if each of the networks produces the correct shape.
@@ -32,9 +39,8 @@ class TestModel(unittest.TestCase):  # pylint: disable=missing-class-docstring
         input_data = (torch.rand((2, 3, 540, 960)), torch.rand((2, 3, 540, 960)))  # Tuple of left/right images in batch, channel, height, width
 
         with torch.no_grad():
-            for model, n_params in self.models:
+            for model, _ in self.models:
                 self.assertEqual(model(input_data).size(), (2, 1, 540, 960))
-                self.assertEqual(self.count_parameters(model), n_params)
 
     @staticmethod
     def count_parameters(model):
