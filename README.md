@@ -1,6 +1,6 @@
 # StereoNet implemented in PyTorch
 
-**Currently training (2021-09-04) (~20hrs per epoch on my 1070)**
+**Currently training (2021-09-06) (~4hrs per rescaled epoch on my 1070)**
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
@@ -16,11 +16,22 @@ Currently implemented
 
 * Downsampling feature network with `k_downsampling_layers`
 * Cost volume filtering
+    * When training, a left *and* right cost volume is computed and backprop'd through using the left and right disparity maps.
 * Hierarchical refinement with cascading `k_refinement_layers`
 * Robust loss function [A General and Adaptive Robust Loss Function, Barron (2019)](https://arxiv.org/abs/1701.03077)
 
-Currently unclear
+Two repos were relied on heavily to inform the network (along with the actual paper)
+Original paper: https://arxiv.org/abs/1807.08865
+X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
+ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
 
-* "We found that, intuitively, training with the left and right disparity maps for an image pair at the same time significantly sped up the training time." Page 9.  Does that mean for each left/right RGB image pair, they compute the loss for the left disparity and the loss for the right disparity and then sum?  I need to investigate.
+I believe ZhiXuanLi's repo follows the paper best up until line 107 (note their CostVolume computation is incorrect)
+    https://github.com/zhixuanli/StereoNet/issues/12#issuecomment-508327106
 
-    * I think maybe I need to compute 2 cost volumes and then have 2 passes through the cascading refiner.  I'll think.
+X-StereoLab is good up until line 180.  X-StereoLab return both the up sampled and refined independently and don't perform the final ReLU.
+
+I believe the implementation that I have written takes the best of both repos and follows the paper most closely.
+
+Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follows X-Stereo but not ZhiXuanLi, the latter do it reverse order).
+
+Neither repo had a cascade of refinement networks and neither repo trained on both the left *and* right disparities.  I believe my repo has both of these correctly implemented.

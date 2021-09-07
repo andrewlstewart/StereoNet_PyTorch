@@ -1,20 +1,4 @@
 """
-Written by Andrew Stewart (andrewlstewart@gmail.com)
-
-Two repos were relied on heavily to inform the network (along with the actual paper)
-Original paper: https://arxiv.org/abs/1807.08865
-X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
-ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
-
-I believe ZhiXuanLi's repo follows the paper best up until line 107 (note their CostVolume computation is incorrect)
-    https://github.com/zhixuanli/StereoNet/issues/12#issuecomment-508327106
-
-X-StereoLab is good up until line 180.  X-StereoLabl return both the up sampled and refined independently and don't perform the final ReLU.
-
-I believe the implementation that I have written takes the best of both repos and follows the paper most closely.
-
-Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follows X-Stereo but not ZhiXuanLi, the latter do it reverse order).
-
 """
 
 from typing import Tuple, Dict, List
@@ -31,11 +15,13 @@ import src.utils as utils
 
 
 class StereoNet(pl.LightningModule):
-    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 192):
+    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 192, training_scale_factor: int = 1):
         super().__init__()
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
         self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
+
+        self.training_rescale_factor = training_scale_factor
 
         # Feature network
         self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=32, k_downsampling_layers=self.k_downsampling_layers)
@@ -48,13 +34,13 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_pyramid(self, x: Tuple[torch.Tensor]) -> List[torch.Tensor]:  # pylint: disable=invalid-name, too-many-locals
+    def forward_pyramid(self, x: Tuple[torch.Tensor], side: str = 'left') -> List[torch.Tensor]:  # pylint: disable=invalid-name, too-many-locals
         left, right = x
 
         left_embedding = self.feature_extractor(left)
         right_embedding = self.feature_extractor(right)
 
-        cost = self.cost_volumizer((left_embedding, right_embedding))
+        cost = self.cost_volumizer((left_embedding, right_embedding), side=side)
 
         disparity_pyramid = [soft_argmin(cost, self.max_disps)]
 
@@ -75,25 +61,32 @@ class StereoNet(pl.LightningModule):
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:  # pylint: disable=arguments-differ, unused-argument
         left = batch['left']
         right = batch['right']
-        disp_gt = batch['disp']
+        disp_gt_left = batch['disp_left']
+        disp_gt_right = batch['disp_right']
 
-        disp_pred = self.forward_pyramid((left, right))
+        disp_pred_left = self.forward_pyramid((left, right), side='left')
+        disp_pred_right = self.forward_pyramid((left, right), side='right')
 
-        for idx, disparity in enumerate(disp_pred):
-            disp_pred[idx] = F.interpolate(disparity, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
+        for idx, (disparity_left, disparity_right) in enumerate(zip(disp_pred_left, disp_pred_right)):
+            disp_pred_left[idx] = F.interpolate(disparity_left, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
+            disp_pred_right[idx] = F.interpolate(disparity_right, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
 
-        disp_pred = torch.stack(disp_pred, dim=0)
+        disp_pred_left = torch.stack(disp_pred_left, dim=0)
+        disp_pred_right = torch.stack(disp_pred_right, dim=0)
 
-        loss = torch.mean(robust_loss(disp_gt.tile((disp_pred.size()[0], 1, 1, 1, 1)) - disp_pred, alpha=1, c=2))
+        loss_left = torch.mean(robust_loss(disp_gt_left.tile((disp_pred_left.size()[0], 1, 1, 1, 1)) - disp_pred_left, alpha=1, c=2))
+        loss_right = torch.mean(robust_loss(disp_gt_right.tile((disp_pred_right.size()[0], 1, 1, 1, 1)) - disp_pred_right, alpha=1, c=2))
+
+        loss = (loss_left + loss_right) / 2
 
         self.log("train_loss_step", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        self.log("train_loss_epoch", F.l1_loss(disp_pred[-1], disp_gt), on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:  # pylint: disable=arguments-differ, unused-argument
         left = batch['left']
         right = batch['right']
-        disp_gt = batch['disp']
+        disp_gt = batch['disp_left']
 
         disp_pred = self((left, right))
 
@@ -107,7 +100,10 @@ class StereoNet(pl.LightningModule):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                   "frequency": 4,  #TODO: Set this automatically to the crop factor
+                   # Original authors trained with a batch size of 1 and a decaying learning rate.  If we randomly crop down the image
+                   # to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
+                   # image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
+                   "frequency": self.training_rescale_factor**2,
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
         return config
@@ -158,22 +154,31 @@ class CostVolume(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:  # pylint: disable=invalid-name
+    def forward(self, x: Tuple[torch.Tensor], side='left') -> torch.Tensor:  # pylint: disable=invalid-name
         # Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
         reference_embedding, target_embedding = x
 
-        b, c, h, w = reference_embedding.size()  # pylint: disable=invalid-name
-        cost = torch.Tensor(b, c, self.max_disps, h, w).zero_()
-        cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
-        cost[:, :, 0, :, :] = reference_embedding - target_embedding
-        for idx in range(1, self.max_disps):
-            cost[:, :, idx, :, idx:] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
-        cost = cost.contiguous()
+        cost = compute_volume(reference_embedding, target_embedding, max_disps=self.max_disps, side=side)
 
         cost = self.net(cost)
         cost = torch.squeeze(cost, dim=1)
 
         return cost
+
+
+def compute_volume(reference_embedding, target_embedding, max_disps, side: str = 'left'):
+    b, c, h, w = reference_embedding.size()  # pylint: disable=invalid-name
+    cost = torch.Tensor(b, c, max_disps, h, w).zero_()
+    cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
+    cost[:, :, 0, :, :] = reference_embedding - target_embedding
+    for idx in range(1, max_disps):
+        if side == 'left':
+            cost[:, :, idx, :, idx:] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
+        if side == 'right':
+            cost[:, :, idx, :, :-idx] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
+    cost = cost.contiguous()
+
+    return cost
 
 
 class Refinement(torch.nn.Module):
@@ -255,7 +260,7 @@ def robust_loss(x: torch.Tensor, alpha: Number, c: Number) -> torch.Tensor:  # p
 def main():
     # TODO: Move this to a test function
     model = StereoNet()
-    data = (torch.from_numpy(np.ones((2, 3, 540, 960), dtype=np.float32)), torch.from_numpy(np.ones((2, 3, 540, 960), dtype=np.float32)))
+    data = (torch.from_numpy(np.ones((2, 3, 270, 480), dtype=np.float32)), torch.from_numpy(np.ones((2, 3, 270, 480), dtype=np.float32)))
     output = model(data)  # pylint: disable=unused-variable
 
 

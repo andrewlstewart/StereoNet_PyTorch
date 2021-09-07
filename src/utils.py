@@ -36,7 +36,7 @@ class SceneflowDataset(Dataset):
             transforms = [transforms]
         self.transforms = transforms
 
-        self.left_image_path, self.right_image_path, self.disp_path = self.get_paths()
+        self.left_image_path, self.right_image_path, self.left_disp_path, self.right_disp_path = self.get_paths()
 
     def __len__(self) -> int:
         return len(self.left_image_path)
@@ -44,11 +44,16 @@ class SceneflowDataset(Dataset):
     def __getitem__(self, index):
         left = image_loader(self.left_image_path[index])
         right = image_loader(self.right_image_path[index])
-        disp, _ = pfm_loader(self.disp_path[index])
-        disp = disp[..., np.newaxis]
-        disp = np.ascontiguousarray(disp)
 
-        sample = {'left': left, 'right': right, 'disp': disp}
+        disp_left, _ = pfm_loader(self.left_disp_path[index])
+        disp_left = disp_left[..., np.newaxis]
+        disp_left = np.ascontiguousarray(disp_left)
+
+        disp_right, _ = pfm_loader(self.right_disp_path[index])
+        disp_right = disp_right[..., np.newaxis]
+        disp_right = np.ascontiguousarray(disp_right)
+
+        sample = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}
 
         if self.transforms:
             for transform in self.transforms:
@@ -66,6 +71,7 @@ class SceneflowDataset(Dataset):
         left_image_path = []
         right_image_path = []
         left_disp_path = []
+        right_disp_path = []
 
         # For each left image, do some path manipulation to find the corresponding right
         # image and left disparity.
@@ -79,18 +85,20 @@ class SceneflowDataset(Dataset):
                 continue
 
             r_path = Path("\\".join(['right' if 'left' in part else part for part in path.parts]))
-            d_path = Path("\\".join([f'{part.replace("frames_cleanpass","")}disparity' if 'frames_cleanpass' in part else part for part in path.parts])).with_suffix('.pfm')
+            dl_path = Path("\\".join([f'{part.replace("frames_cleanpass","")}disparity' if 'frames_cleanpass' in part else part for part in path.parts])).with_suffix('.pfm')
+            dr_path = Path("\\".join([f'{part.replace("frames_cleanpass","")}disparity' if 'frames_cleanpass' in part else part for part in r_path.parts])).with_suffix('.pfm')
             # assert r_path.exists()
             # assert d_path.exists()
 
-            if not r_path.exists() or not d_path.exists():
+            if not r_path.exists() or not dl_path.exists():
                 continue
 
             left_image_path.append(path)
             right_image_path.append(r_path)
-            left_disp_path.append(d_path)
+            left_disp_path.append(dl_path)
+            right_disp_path.append(dr_path)
 
-        return (left_image_path, right_image_path, left_disp_path)
+        return (left_image_path, right_image_path, left_disp_path, right_disp_path)
 
 
 class RandomResizedCrop:
@@ -107,7 +115,7 @@ class RandomResizedCrop:
     def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
         random_scale = self.randomizer.random() * (self.scale[1]-self.scale[0]) + self.scale[0]
 
-        h, w = sample['left'].size()[-2:]
+        h, w = sample['left'].size()[-2:]  # pylint: disable=invalid-name
         scaled_h, scaled_w = int(h*random_scale), int(w*random_scale)
 
         top = int(self.randomizer.random()*(h - scaled_h))
