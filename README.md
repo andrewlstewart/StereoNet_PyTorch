@@ -16,7 +16,7 @@ Currently implemented
 
 * Downsampling feature network with `k_downsampling_layers`
 * Cost volume filtering
-    * When training, a left *and* right cost volume is computed and backprop'd through using the left and right disparity maps.
+    * When training, a left *and* right cost volume is computed with the loss arising from the mean of the losses of left and right disparity delta to ground truth.
 * Hierarchical refinement with cascading `k_refinement_layers`
 * Robust loss function [A General and Adaptive Robust Loss Function, Barron (2019)](https://arxiv.org/abs/1701.03077)
 
@@ -35,3 +35,8 @@ I believe the implementation that I have written takes the best of both repos an
 Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follows X-Stereo but not ZhiXuanLi, the latter do it reverse order).
 
 Neither repo had a cascade of refinement networks and neither repo trained on both the left *and* right disparities.  I believe my repo has both of these correctly implemented.
+
+Currently unclear
+
+* Do I need to have a max_disps parameter to help the model learn faster/better?
+* I'm waffling on whether I should stick with a single image in a batch.  Pros, atrous convolutions will have more signal to noise (arising from zero padding).  Cons, batch norm on a batch of one doesn't sound ideal.  Think.
