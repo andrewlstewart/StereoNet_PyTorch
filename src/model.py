@@ -1,4 +1,9 @@
 """
+Classes and functions to instantiate, and train, a StereoNet model (https://arxiv.org/abs/1807.08865).
+
+StereoNet model is decomposed into a feature extractor, cost volume creation, and a cascade of refiner networks.
+
+Loss function is the Robust Loss function (https://arxiv.org/abs/1701.03077)
 """
 
 from typing import Tuple, Dict, List
@@ -9,12 +14,18 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-import numpy as np
 
 import src.utils as utils
 
 
 class StereoNet(pl.LightningModule):
+    """
+    StereoNet model.  During training, takes in a Dictionary keyed with 'left', 'right', 'disp_left', and 'disp_right' with torch.FloatTensor values [b, c, h, w].
+    At inference, (ie. calling the forward method), only the predicted left disparity is returned.
+
+    Trained with RMSProp + Exponentially decaying learning rate scheduler.
+    """
+
     def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 192, training_scale_factor: int = 1):
         super().__init__()
         self.k_downsampling_layers = k_downsampling_layers
@@ -35,6 +46,10 @@ class StereoNet(pl.LightningModule):
             self.refiners.append(Refinement())
 
     def forward_pyramid(self, x: Tuple[torch.Tensor], side: str = 'left') -> List[torch.Tensor]:  # pylint: disable=invalid-name, too-many-locals
+        """
+        This is the heart of the forward pass.  Given a Tuple of (left/right) tensors, perform the feature extraction, cost volume estimation, cascading
+        refiners to return a list of the disparities.  First entry of the list is the lowest resolution while the last is the full resolution disparity.
+        """
         left, right = x
 
         left_embedding = self.feature_extractor(left)
@@ -55,10 +70,19 @@ class StereoNet(pl.LightningModule):
         return disparity_pyramid
 
     def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:  # pylint: disable=arguments-differ
-        disparities = self.forward_pyramid(x)
+        """
+        Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
+        """
+        disparities = self.forward_pyramid(x, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:  # pylint: disable=arguments-differ, unused-argument
+        """
+        Compute the disparities for both the left and right volumes then compute the loss for each.  Finally take the mean between the two losses and
+        return that as the final loss.
+
+        Log at each step the Robust Loss and log the L1 loss (End-point-error) at each epoch.
+        """
         left = batch['left']
         right = batch['right']
         disp_gt_left = batch['disp_left']
@@ -84,6 +108,11 @@ class StereoNet(pl.LightningModule):
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:  # pylint: disable=arguments-differ, unused-argument
+        """
+        Compute the L1 loss (End-point-error) over the validation set for the left disparity map.
+
+        Log a figure of the left/right RGB images and the grount truth disparity + predicted disparity to the logger.
+        """
         left = batch['left']
         right = batch['right']
         disp_gt = batch['disp_left']
@@ -97,12 +126,16 @@ class StereoNet(pl.LightningModule):
             self.logger.experiment.add_figure("generated_images", fig, self.current_epoch, close=True)
 
     def configure_optimizers(self):
+        """
+        RMSProp optimizer + Exponentially decaying learning rate.
+
+        Original authors trained with a batch size of 1 and a decaying learning rate.  If we randomly crop down the image
+        to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
+        image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
+        """
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                   # Original authors trained with a batch size of 1 and a decaying learning rate.  If we randomly crop down the image
-                   # to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
-                   # image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
                    "frequency": self.training_rescale_factor**2,
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
@@ -110,6 +143,10 @@ class StereoNet(pl.LightningModule):
 
 
 class FeatureExtractor(torch.nn.Module):
+    """
+    Feature extractor network with 'K' downsampling layers.  Refer to the original paper for full discussion.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, k_downsampling_layers: int):
         super().__init__()
         self.k = k_downsampling_layers
@@ -127,12 +164,16 @@ class FeatureExtractor(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name, missing-function-docstring
         x = self.net(x)
         return x
 
 
 class CostVolume(torch.nn.Module):
+    """
+    Computes the cost volume and filters it using the 3D convolutional network.  Refer to original paper for a full discussion.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, max_disps: int):
         super().__init__()
 
@@ -154,8 +195,13 @@ class CostVolume(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: Tuple[torch.Tensor], side='left') -> torch.Tensor:  # pylint: disable=invalid-name
-        # Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
+    def forward(self, x: Tuple[torch.Tensor], side: str = 'left') -> torch.Tensor:  # pylint: disable=invalid-name
+        """
+        The cost volume effectively holds one of the left/right images constant (albeit clipping) and computes the difference with a
+        shifting (left/right) portion of the corresponding image.  By default, this method holds the left image stationary and sweeps the right image.
+
+        To compute the cost volume for holding the right image stationary and sweeping the left image, use side='right'.
+        """
         reference_embedding, target_embedding = x
 
         cost = compute_volume(reference_embedding, target_embedding, max_disps=self.max_disps, side=side)
@@ -167,6 +213,13 @@ class CostVolume(torch.nn.Module):
 
 
 def compute_volume(reference_embedding, target_embedding, max_disps, side: str = 'left'):
+    """
+    Refer to the doc string in CostVolume.forward.
+    Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
+
+    This difference based cost volume is also reflected in an implementation of the popular DispNetCorr:
+        Line 81 https://github.com/wyf2017/DSMnet/blob/b61652dfb3ee84b996f0ad4055eaf527dc6b965f/models/util_conv.py
+    """
     b, c, h, w = reference_embedding.size()  # pylint: disable=invalid-name
     cost = torch.Tensor(b, c, max_disps, h, w).zero_()
     cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
@@ -182,6 +235,9 @@ def compute_volume(reference_embedding, target_embedding, max_disps, side: str =
 
 
 class Refinement(torch.nn.Module):
+    """
+    Several of these classes will be instantiated to perform the *cascading* refinement.  Refer to the original paper for a full discussion.
+    """
     def __init__(self):
         super().__init__()
 
@@ -198,12 +254,19 @@ class Refinement(torch.nn.Module):
 
         self.net = nn.Sequential(net)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name, missing-function-docstring
         x = self.net(x)
         return x
 
 
 class ResBlock(torch.nn.Module):
+    """
+    Just a note, in the original paper, there is no discussion about padding; however, both the ZhiXuanLi and the X-StereoLab implementation using padding.
+    This does make sense to maintain the image size after the feature extraction has occured.
+
+    X-StereoLab uses a simple Res unit with a single conv and summation while ZhiXuanLi uses the original residual unit implementation.
+    This class also uses the original implementation with 2 layers of convolutions.
+    """
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
@@ -221,7 +284,7 @@ class ResBlock(torch.nn.Module):
         self.batch_norm_2 = nn.BatchNorm2d(num_features=out_channels)
         self.activation_2 = nn.LeakyReLU(negative_slope=0.2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name, missing-function-docstring
         # Original Residual Unit: https://arxiv.org/pdf/1603.05027.pdf (Fig 1. Left)
 
         res = self.conv_1(x)
@@ -237,6 +300,10 @@ class ResBlock(torch.nn.Module):
 
 
 def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
+    """
+    Soft argmin function described in the original paper.  The disparity grid creates the first 'd' value in equation 2 while
+    cost is the C_i(d) term.  The exp/sum(exp) == softmax function.
+    """
     disparity_softmax = F.softmax(-cost, dim=1)
 
     # Effectively does what disparityregression does on line 119 of the X-StereoLab permalink above
@@ -251,18 +318,7 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
 
 def robust_loss(x: torch.Tensor, alpha: Number, c: Number) -> torch.Tensor:  # pylint: disable=invalid-name
     """
-    https://arxiv.org/abs/1701.03077
+    A General and Adaptive Robust Loss Function (https://arxiv.org/abs/1701.03077)
     """
     f = (abs(alpha - 2) / alpha) * (torch.pow(torch.pow(x / c, 2)/abs(alpha - 2) + 1, alpha/2) - 1)  # pylint: disable=invalid-name
     return f
-
-
-def main():
-    # TODO: Move this to a test function
-    model = StereoNet()
-    data = (torch.from_numpy(np.ones((2, 3, 270, 480), dtype=np.float32)), torch.from_numpy(np.ones((2, 3, 270, 480), dtype=np.float32)))
-    output = model(data)  # pylint: disable=unused-variable
-
-
-if __name__ == "__main__":
-    main()
