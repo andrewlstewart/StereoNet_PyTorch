@@ -4,7 +4,7 @@
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are ok.  Validation EPE $\approx12$ pixels.
+Currently training, early results are ok.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 12"> pixels.
 
 Epoch 10:
 
