@@ -45,35 +45,44 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_pyramid(self, x: Tuple[torch.Tensor], side: str = 'left') -> List[torch.Tensor]:  # pylint: disable=invalid-name, too-many-locals
+    def forward_pyramid(self, sample: Tuple[torch.Tensor], side: str = 'left') -> List[torch.Tensor]:
         """
-        This is the heart of the forward pass.  Given a Tuple of (left/right) tensors, perform the feature extraction, cost volume estimation, cascading
+        This is the heart of the forward pass.  Given a Dictionary keyed with 'left' and 'right' tensors, perform the feature extraction, cost volume estimation, cascading
         refiners to return a list of the disparities.  First entry of the list is the lowest resolution while the last is the full resolution disparity.
+
+        The idea with reference/shifting is that when computing the cost volume, one image is effectively held stationary while the other image
+        sweeps across.  If the provided tuple (x) is (left/right) stereo pair with the argument side='left', then the stationary image will be the left
+        image and the sweeping image will be the right image and vice versa.
         """
-        left, right = x
+        if side == 'left':
+            reference = sample['left']
+            shifting = sample['right']
+        elif side == 'right':
+            reference = sample['right']
+            shifting = sample['left']
 
-        left_embedding = self.feature_extractor(left)
-        right_embedding = self.feature_extractor(right)
+        reference_embedding = self.feature_extractor(reference)
+        shifting_embedding = self.feature_extractor(shifting)
 
-        cost = self.cost_volumizer((left_embedding, right_embedding), side=side)
+        cost = self.cost_volumizer((reference_embedding, shifting_embedding), side=side)
 
         disparity_pyramid = [soft_argmin(cost, self.max_disps)]
 
         for idx, refiner in enumerate(self.refiners, start=1):
             scale = (2**self.k_refinement_layers) / (2**idx)
-            new_h, new_w = int(left.size()[2]//scale), int(left.size()[3]//scale)
-            left_rescaled = F.interpolate(left, [new_h, new_w], mode='bilinear', align_corners=True)
+            new_h, new_w = int(reference.size()[2]//scale), int(reference.size()[3]//scale)
+            reference_rescaled = F.interpolate(reference, [new_h, new_w], mode='bilinear', align_corners=True)
             disparity_low_rescaled = F.interpolate(disparity_pyramid[-1], [new_h, new_w], mode='bilinear', align_corners=True)
-            refined_disparity = F.relu(refiner(torch.cat((left_rescaled, disparity_low_rescaled), dim=1)) + disparity_low_rescaled)
+            refined_disparity = F.relu(refiner(torch.cat((reference_rescaled, disparity_low_rescaled), dim=1)) + disparity_low_rescaled)
             disparity_pyramid.append(refined_disparity)
 
         return disparity_pyramid
 
-    def forward(self, x: Tuple[torch.Tensor]) -> torch.Tensor:  # pylint: disable=arguments-differ
+    def forward(self, sample: Dict[str, torch.Tensor]) -> torch.Tensor:  #pylint: disable=arguments-differ
         """
         Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
         """
-        disparities = self.forward_pyramid(x, side='left')
+        disparities = self.forward_pyramid(sample, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> torch.Tensor:  # pylint: disable=arguments-differ, unused-argument
@@ -88,8 +97,10 @@ class StereoNet(pl.LightningModule):
         disp_gt_left = batch['disp_left']
         disp_gt_right = batch['disp_right']
 
-        disp_pred_left = self.forward_pyramid((left, right), side='left')
-        disp_pred_right = self.forward_pyramid((left, right), side='right')
+        sample = {'left': left, 'right': right}
+
+        disp_pred_left = self.forward_pyramid(sample, side='left')
+        disp_pred_right = self.forward_pyramid(sample, side='right')
 
         for idx, (disparity_left, disparity_right) in enumerate(zip(disp_pred_left, disp_pred_right)):
             disp_pred_left[idx] = F.interpolate(disparity_left, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
@@ -117,7 +128,9 @@ class StereoNet(pl.LightningModule):
         right = batch['right']
         disp_gt = batch['disp_left']
 
-        disp_pred = self((left, right))
+        sample = {'left': left, 'right': right}
+
+        disp_pred = self(sample)
 
         loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
@@ -238,6 +251,7 @@ class Refinement(torch.nn.Module):
     """
     Several of these classes will be instantiated to perform the *cascading* refinement.  Refer to the original paper for a full discussion.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -267,6 +281,7 @@ class ResBlock(torch.nn.Module):
     X-StereoLab uses a simple Res unit with a single conv and summation while ZhiXuanLi uses the original residual unit implementation.
     This class also uses the original implementation with 2 layers of convolutions.
     """
+
     def __init__(self,
                  in_channels: int,
                  out_channels: int,

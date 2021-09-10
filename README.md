@@ -1,10 +1,10 @@
 # StereoNet implemented in PyTorch
 
-**Currently training (2021-09-06) (~4hrs per rescaled epoch on my 1070)**
+**Currently training (2021-09-09) (~12hrs per epoch on my 1070)**
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are ok.  Validation EPE $\approx20$ pixels.  Still need to implement the left/right disparity training vs just using the left disparity.
+Currently training, early results are ok.  Validation EPE $\approx12$ pixels.
 
 Epoch 10:
 
@@ -34,9 +34,10 @@ I believe the implementation that I have written takes the best of both repos an
 
 Noteably, the argmin'd disparity is computed prior to the bilinear interpolation (follows X-Stereo but not ZhiXuanLi, the latter do it reverse order).
 
-Neither repo had a cascade of refinement networks and neither repo trained on both the left *and* right disparities.  I believe my repo has both of these correctly implemented.
+Further, neither repo had a cascade of refinement networks and neither repo trained on both the left *and* right disparities.  I believe my repo has both of these correctly implemented.
+
+The paper clearly states they use (many) batch norm layers while simultaneously using a batch size of 1.  I find this interesting.  I naively tried training on random 50% crops (same crop applied to left/right/and disparities) so that I could get more samples into a batch but I think I was losing too many features so the EPE was consistently high.  Currently, training using a single sample (left/right images and left/right disparity).  I still needed to crop down to 513x912 images in order to not run into GPU memory issues.
 
 Currently unclear
 
 * Do I need to have a max_disps parameter to help the model learn faster/better?
-* I'm waffling on whether I should stick with a single image in a batch.  Pros, atrous convolutions will have more signal to noise (arising from zero padding).  Cons, batch norm on a batch of one doesn't sound ideal.  Think.

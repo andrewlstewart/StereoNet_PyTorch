@@ -1,4 +1,5 @@
 """
+Script to instantiate a StereoNet model + train on the SceneFlow dataset.
 """
 
 from pathlib import Path
@@ -47,10 +48,10 @@ def main():  # pylint: disable=missing-function-docstring
     train_transforms = [
         utils.ToTensor(),
         utils.Rescale(),
-        utils.RandomResizedCrop(output_size=(int(540/args.rescale_size), int(960/args.rescale_size)),
-                                scale=(0.8/args.rescale_size, 1.2/args.rescale_size),
-                                randomizer=random_generator),
-        # TODO: Random rotation?
+        utils.RandomCrop(scale=0.95, randomizer=random_generator)
+        # utils.RandomResizedCrop(output_size=(int(540/args.rescale_size), int(960/args.rescale_size)),
+                                # scale=(0.8/args.rescale_size, 1.2/args.rescale_size),
+                                # randomizer=random_generator),
         # TODO: Color jitter?
     ]
     train_dataset = utils.SceneflowDataset(args.sceneflow_root, string_exclude='TEST', transforms=train_transforms)
@@ -65,8 +66,6 @@ def main():  # pylint: disable=missing-function-docstring
     trainer = pl.Trainer(gpus=args.num_gpus, min_epochs=args.min_epochs, max_epochs=args.max_epochs, logger=logger, callbacks=[lr_monitor], checkpoint_callback=True)
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-
-    print('stall')
 
 
 if __name__ == "__main__":
