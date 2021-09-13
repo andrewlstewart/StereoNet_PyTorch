@@ -21,8 +21,11 @@ Currently implemented
 * Robust loss function [A General and Adaptive Robust Loss Function, Barron (2019)](https://arxiv.org/abs/1701.03077)
 
 Two repos were relied on heavily to inform the network (along with the actual paper)
+
 Original paper: https://arxiv.org/abs/1807.08865
+
 X-StereoLab: https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
+
 ZhiXuanLi: https://github.com/zhixuanli/StereoNet/blob/f5576689e66e8370b78d9646c00b7e7772db0394/models/stereonet.py
 
 I believe ZhiXuanLi's repo follows the paper best up until line 107 (note their CostVolume computation is incorrect)
