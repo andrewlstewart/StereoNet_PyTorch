@@ -26,13 +26,12 @@ class StereoNet(pl.LightningModule):
     Trained with RMSProp + Exponentially decaying learning rate scheduler.
     """
 
-    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 192, training_scale_factor: int = 1):
+    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 196):#, training_scale_factor: int = 1):
         super().__init__()
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
+        self.candidate_disparities = candidate_disparities
         self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
-
-        self.training_rescale_factor = training_scale_factor
 
         # Feature network
         self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=32, k_downsampling_layers=self.k_downsampling_layers)
@@ -48,7 +47,7 @@ class StereoNet(pl.LightningModule):
     def forward_pyramid(self, sample: Tuple[torch.Tensor], side: str = 'left') -> List[torch.Tensor]:
         """
         This is the heart of the forward pass.  Given a Dictionary keyed with 'left' and 'right' tensors, perform the feature extraction, cost volume estimation, cascading
-        refiners to return a list of the disparities.  First entry of the list is the lowest resolution while the last is the full resolution disparity.
+        refiners to return a list of the disparities.  First entry of the returned list is the lowest resolution while the last is the full resolution disparity.
 
         The idea with reference/shifting is that when computing the cost volume, one image is effectively held stationary while the other image
         sweeps across.  If the provided tuple (x) is (left/right) stereo pair with the argument side='left', then the stationary image will be the left
@@ -66,7 +65,7 @@ class StereoNet(pl.LightningModule):
 
         cost = self.cost_volumizer((reference_embedding, shifting_embedding), side=side)
 
-        disparity_pyramid = [soft_argmin(cost, self.max_disps)]
+        disparity_pyramid = [soft_argmin(cost, self.candidate_disparities)]
 
         for idx, refiner in enumerate(self.refiners, start=1):
             scale = (2**self.k_refinement_layers) / (2**idx)
@@ -109,13 +108,25 @@ class StereoNet(pl.LightningModule):
         disp_pred_left = torch.stack(disp_pred_left, dim=0)
         disp_pred_right = torch.stack(disp_pred_right, dim=0)
 
-        loss_left = torch.mean(robust_loss(disp_gt_left.tile((disp_pred_left.size()[0], 1, 1, 1, 1)) - disp_pred_left, alpha=1, c=2))
-        loss_right = torch.mean(robust_loss(disp_gt_right.tile((disp_pred_right.size()[0], 1, 1, 1, 1)) - disp_pred_right, alpha=1, c=2))
+        def _tiler(tensor: torch.FloatTensor, matching_size = (disp_pred_left.size()[0], 1, 1, 1, 1)):
+            return tensor.tile(matching_size)
+
+        left_mask = (disp_gt_left < self.candidate_disparities).detach()
+        right_mask = (disp_gt_right < self.candidate_disparities).detach()
+
+        left_mask = _tiler(left_mask)
+        right_mask = _tiler(right_mask)
+
+        disp_gt_left = _tiler(disp_gt_left)
+        disp_gt_right = _tiler(disp_gt_right)
+
+        loss_left = torch.mean(robust_loss(disp_gt_left[left_mask] - disp_pred_left[left_mask], alpha=1, c=2))
+        loss_right = torch.mean(robust_loss(disp_gt_right[right_mask] - disp_pred_right[right_mask], alpha=1, c=2))
 
         loss = (loss_left + loss_right) / 2
 
         self.log("train_loss_step", loss, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-        self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left), on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left[-1]), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx) -> None:  # pylint: disable=arguments-differ, unused-argument
@@ -149,7 +160,8 @@ class StereoNet(pl.LightningModule):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                   "frequency": self.training_rescale_factor**2,
+                #    "frequency": self.training_rescale_factor**2,
+                   "frequency": 1,
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
         return config
@@ -241,7 +253,7 @@ def compute_volume(reference_embedding, target_embedding, max_disps, side: str =
         if side == 'left':
             cost[:, :, idx, :, idx:] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
         if side == 'right':
-            cost[:, :, idx, :, :-idx] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
+            cost[:, :, idx, :, :-idx] = reference_embedding[:, :, :, :-idx] - target_embedding[:, :, :, idx:]
     cost = cost.contiguous()
 
     return cost
@@ -320,10 +332,9 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
     cost is the C_i(d) term.  The exp/sum(exp) == softmax function.
     """
     disparity_softmax = F.softmax(-cost, dim=1)
+    # TODO: Bilinear interpolate the disparity dimension back to D to perform the proper d*exp(-C_i(d))
 
-    # Effectively does what disparityregression does on line 119 of the X-StereoLab permalink above
-    disparity_grid = torch.arange(0, max_disps).reshape((max_disps, 1, 1)).repeat(disparity_softmax.size(
-    )[0], disparity_softmax.size()[1]//max_disps, disparity_softmax.size()[2], disparity_softmax.size()[3])
+    disparity_grid = torch.linspace(0, max_disps, disparity_softmax.size(1)).reshape(1, -1, 1, 1)
     disparity_grid = disparity_grid.type_as(disparity_softmax)
 
     disp = torch.sum(disparity_softmax * disparity_grid, dim=1, keepdim=True)

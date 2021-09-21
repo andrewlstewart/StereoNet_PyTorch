@@ -23,13 +23,15 @@ def parse_train_args() -> argparse.Namespace:
     parser.add_argument('--sceneflow_root', type=Path, help="Root path containing the sceneflow folders containing the images and disparities.")
     parser.add_argument('--k_downsampling_layers', type=int, default=3)
     parser.add_argument('--k_refinement_layers', type=int, default=3)
+    parser.add_argument('--candidate_disparities', type=int, default=256)
 
-    parser.add_argument('--train_batch_size', default=2, type=int)
-    parser.add_argument('--val_batch_size', default=4, type=int)
+    parser.add_argument('--train_batch_size', default=1, type=int)
+    parser.add_argument('--val_batch_size', default=1, type=int)
     parser.add_argument('--min_epochs', type=int, default=10, help="Minimum number of epochs to train.")
     parser.add_argument('--max_epochs', type=int, default=50, help="Maximum number of epochs to train.")
     parser.add_argument('--random_seed', type=int, default=42, help="Random seed used in the image transforms (not related to image selection in batches)")
-    parser.add_argument('--rescale_size', type=int, default=2, help="Factor to rescale (shrink) the images, 2 corresponds with a w/2 and h/2 or 4x shrink in image dimensions.")
+    parser.add_argument('--crop_percentage', type=float, default=0.95, help="Factor to rescale all images/disparities.  Required because I don't have enough VRAM.")
+    # parser.add_argument('--rescale_size', type=int, default=1, help="Factor to rescale (shrink) the images, 2 corresponds with a w/2 and h/2 or 4x shrink in image dimensions.")
 
     parser.add_argument('--num_gpus', type=int, default=0, help="Number of GPUs to use.")
 
@@ -41,14 +43,15 @@ def main():  # pylint: disable=missing-function-docstring
     args = parse_train_args()
 
     # Instantiate model with built in optimizer
-    model = StereoNet(k_downsampling_layers=args.k_downsampling_layers, k_refinement_layers=args.k_refinement_layers, training_scale_factor=args.rescale_size)
+    model = StereoNet(k_downsampling_layers=args.k_downsampling_layers, k_refinement_layers=args.k_refinement_layers, candidate_disparities=args.candidate_disparities)
 
     # Get datasets
-    random_generator = np.random.default_rng(seed=args.random_seed)
+    # random_generator = np.random.default_rng(seed=args.random_seed)
     train_transforms = [
         utils.ToTensor(),
         utils.Rescale(),
-        utils.RandomCrop(scale=0.95, randomizer=random_generator)
+        utils.CenterCrop(scale=0.95)
+        # utils.RandomCrop(scale=args.crop_percentage, randomizer=random_generator)
         # utils.RandomResizedCrop(output_size=(int(540/args.rescale_size), int(960/args.rescale_size)),
                                 # scale=(0.8/args.rescale_size, 1.2/args.rescale_size),
                                 # randomizer=random_generator),

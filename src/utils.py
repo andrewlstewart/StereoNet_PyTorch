@@ -171,7 +171,7 @@ class RandomCrop:
         self.randomizer = randomizer
 
     def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
-        height, width = sample['left'].size()[-2:]  # pylint: disable=invalid-name
+        height, width = sample['left'].size()[-2:]
 
         output_height = int(self.scale*height)
         output_width = int(self.scale*width)
@@ -182,6 +182,23 @@ class RandomCrop:
         for name, x in sample.items():  # pylint: disable=invalid-name
             x = T.functional.crop(x, top=resized_top, left=resized_left, height=output_height, width=output_width)  # pylint: disable=invalid-name
             sample[name] = x
+        return sample
+
+
+class CenterCrop:
+    """
+    """
+
+    def __init__(self, scale: float):
+        self.scale = scale
+
+    def __call__(self, sample: Dict[str, torch.FloatTensor]) -> Dict[str, torch.FloatTensor]:
+        height, width = sample['left'].size()[-2:]
+        output_height = int(self.scale*height)
+        output_width = int(self.scale*width)
+        cropper = T.CenterCrop((output_height, output_width))
+        for name, x in sample.items():  # pylint: disable=invalid-name
+            sample[name] = cropper(x)
         return sample
 
 
