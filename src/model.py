@@ -26,18 +26,27 @@ class StereoNet(pl.LightningModule):
     Trained with RMSProp + Exponentially decaying learning rate scheduler.
     """
 
-    def __init__(self, k_downsampling_layers: int = 3, k_refinement_layers: int = 3, candidate_disparities: int = 196):#, training_scale_factor: int = 1):
+    def __init__(self, k_downsampling_layers: int = 3,
+                 k_refinement_layers: int = 3, 
+                 candidate_disparities: int = 256,
+                 feature_extractor_filters: int = 32,
+                 cost_volumizer_filters: int = 32) -> None:
         super().__init__()
+        self.save_hyperparameters()
+
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
         self.candidate_disparities = candidate_disparities
         self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
 
+        self.feature_extractor_filters = feature_extractor_filters
+        self.cost_volumizer_filters = cost_volumizer_filters
+
         # Feature network
-        self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=32, k_downsampling_layers=self.k_downsampling_layers)
+        self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=self.feature_extractor_filters, k_downsampling_layers=self.k_downsampling_layers)
 
         # Cost volume
-        self.cost_volumizer = CostVolume(in_channels=32, out_channels=32, max_disps=self.max_disps)
+        self.cost_volumizer = CostVolume(in_channels=self.feature_extractor_filters, out_channels=self.cost_volumizer_filters, max_disps=self.max_disps)
 
         # Hierarchical Refinement: Edge-Aware Upsampling
         self.refiners = nn.ModuleList()
@@ -77,7 +86,7 @@ class StereoNet(pl.LightningModule):
 
         return disparity_pyramid
 
-    def forward(self, sample: Dict[str, torch.Tensor]) -> torch.Tensor:  #pylint: disable=arguments-differ
+    def forward(self, sample: Dict[str, torch.Tensor]) -> torch.Tensor:  # pylint: disable=arguments-differ
         """
         Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
         """
@@ -108,7 +117,7 @@ class StereoNet(pl.LightningModule):
         disp_pred_left = torch.stack(disp_pred_left, dim=0)
         disp_pred_right = torch.stack(disp_pred_right, dim=0)
 
-        def _tiler(tensor: torch.FloatTensor, matching_size = (disp_pred_left.size()[0], 1, 1, 1, 1)):
+        def _tiler(tensor: torch.FloatTensor, matching_size=(disp_pred_left.size()[0], 1, 1, 1, 1)):
             return tensor.tile(matching_size)
 
         left_mask = (disp_gt_left < self.candidate_disparities).detach()
@@ -160,7 +169,7 @@ class StereoNet(pl.LightningModule):
         optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
         lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
                    "interval": "epoch",
-                #    "frequency": self.training_rescale_factor**2,
+                   #    "frequency": self.training_rescale_factor**2,
                    "frequency": 1,
                    "name": "ExponentialDecayLR"}
         config = {"optimizer": optimizer, "lr_scheduler": lr_dict}

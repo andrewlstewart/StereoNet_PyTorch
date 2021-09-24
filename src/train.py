@@ -50,7 +50,7 @@ def main():  # pylint: disable=missing-function-docstring
     train_transforms = [
         utils.ToTensor(),
         utils.Rescale(),
-        utils.CenterCrop(scale=0.95)
+        utils.CenterCrop(scale=args.crop_percentage)
         # utils.RandomCrop(scale=args.crop_percentage, randomizer=random_generator)
         # utils.RandomResizedCrop(output_size=(int(540/args.rescale_size), int(960/args.rescale_size)),
                                 # scale=(0.8/args.rescale_size, 1.2/args.rescale_size),
