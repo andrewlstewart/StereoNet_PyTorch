@@ -1,5 +1,6 @@
 pytorch-lightning==1.4.6
 torchvision==0.10.0
+scikit_image==0.18.3
 flake8==3.9.2
 tox==3.24.3
 pytest==6.2.5

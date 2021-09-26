@@ -18,6 +18,7 @@ Sample_Numpy = Union[Dict[str, npt.NDArray[np.uint8]], Dict[str, npt.NDArray[np.
 Sample_General = Union[Sample_Torch, Sample_Numpy]
 
 
+# TODO: These Transformer classes are created to try and work around typing but it's probably better to use @override.  I'll look into it
 class NumpyTransformer(ABC):
     @abstractmethod
     def __call__(self, x: Sample_Numpy) -> Sample_Numpy:  # pylint: disable=invalid-name
