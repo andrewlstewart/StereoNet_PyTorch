@@ -1,10 +1,12 @@
 # StereoNet implemented in PyTorch
 
-**Currently training (2021-09-09) (~12hrs per epoch on my 1070)**
+![Tests](https://github.com/andrewlstewart/StereoNet_PyTorch/actions/workflows/tests.yml/badge.svg)
+
+**Currently training (2021-09-26) (~12hrs per epoch on my 1070)**
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are ok.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 12"> pixels.
+Currently training, early results are decent.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 4.6"> pixels.
 
 Epoch 10:
 

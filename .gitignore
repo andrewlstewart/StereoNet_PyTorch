@@ -133,3 +133,6 @@ dmypy.json
 
 # PyTorch Lightning loggers
 lightning_logs/
+
+# Permanently saved models
+saved_models/

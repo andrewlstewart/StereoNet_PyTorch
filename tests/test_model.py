@@ -2,50 +2,35 @@
 Test suite for instantiating StereoNet models and performing simple forward passes.
 """
 
-import unittest
+from typing import List, Tuple
 
 import torch
 
-import src.model as model_zoo
+from stereonet.model import StereoNet
 
 
-class TestModel(unittest.TestCase):  # pylint: disable=missing-class-docstring
+def test_model_trainable_parameters(models: List[Tuple[StereoNet, int]]):
+    """
+    Test to see if the number of trainable parameters matches the expected number.
+    """
+    for model, n_params in models:
+        assert (count_parameters(model) == n_params)
 
-    def setUp(self):
-        """
-        Instantiates a bunch of models so we can test their output sizes.
-        """
-        self.models = [
-            (model_zoo.StereoNet(k_downsampling_layers=3, k_refinement_layers=1), 398978),  # Tuple of (model, number of trainable parameters)
-            (model_zoo.StereoNet(k_downsampling_layers=4, k_refinement_layers=1), 424610),
-            (model_zoo.StereoNet(k_downsampling_layers=3, k_refinement_layers=3), 624644),
-            (model_zoo.StereoNet(k_downsampling_layers=4, k_refinement_layers=3), 650276)
-        ]
 
-        for (model, _) in self.models:
-            model.eval()
+def test_forward_sizes(models: List[Tuple[StereoNet, int]]):
+    """
+    Test to see if each of the networks produces the correct shape.
+    """
+    input_data = {'left': torch.rand((2, 3, 540, 960)), 'right': torch.rand((2, 3, 540, 960))}
 
-    def test_model_trainable_parameters(self):
-        """
-        Test to see if the number of trainable parameters matches the expected number.
-        """
-        for model, n_params in self.models:
-            self.assertEqual(self.count_parameters(model), n_params)
+    with torch.no_grad():
+        for model, _ in models:
+            assert (model(input_data).size() == (2, 1, 540, 960))
 
-    def test_forward_sizes(self):
-        """
-        Test to see if each of the networks produces the correct shape.
-        """
-        input_data = (torch.rand((2, 3, 540, 960)), torch.rand((2, 3, 540, 960)))  # Tuple of left/right images in batch, channel, height, width
 
-        with torch.no_grad():
-            for model, _ in self.models:
-                self.assertEqual(model(input_data).size(), (2, 1, 540, 960))
-
-    @staticmethod
-    def count_parameters(model):
-        """
-        Counts the number of trainable parameters in a torch model
-        https://discuss.pytorch.org/t/how-do-i-check-the-number-of-parameters-of-a-model/4325/9
-        """
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+def count_parameters(model: StereoNet) -> int:
+    """
+    Counts the number of trainable parameters in a torch model
+    https://discuss.pytorch.org/t/how-do-i-check-the-number-of-parameters-of-a-model/4325/9
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
