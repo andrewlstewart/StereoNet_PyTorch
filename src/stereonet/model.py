@@ -6,7 +6,7 @@ StereoNet model is decomposed into a feature extractor, cost volume creation, an
 Loss function is the Robust Loss function (https://arxiv.org/abs/1701.03077)
 """
 
-from typing import Tuple, List
+from typing import Tuple, List, Optional, Dict, Any
 from collections import OrderedDict
 
 import torch
@@ -95,7 +95,7 @@ class StereoNet(pl.LightningModule):
         disparities = self.forward_pyramid(sample, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch: st.Sample_Torch, _) -> torch.Tensor:  # type: ignore[override] # pylint: disable=arguments-differ
+    def training_step(self, batch: st.Sample_Torch, _) -> torch.Tensor:  # type: ignore[override, no-untyped-def] # pylint: disable=arguments-differ
         """
         Compute the disparities for both the left and right volumes then compute the loss for each.  Finally take the mean between the two losses and
         return that as the final loss.
@@ -120,7 +120,9 @@ class StereoNet(pl.LightningModule):
         disp_pred_left = torch.stack(disp_pred_left_nonuniform, dim=0)
         disp_pred_right = torch.stack(disp_pred_right_nonuniform, dim=0)
 
-        def _tiler(tensor: torch.Tensor, matching_size=(disp_pred_left.size()[0], 1, 1, 1, 1)):
+        def _tiler(tensor: torch.Tensor, matching_size: Optional[List[int]] = None) -> torch.Tensor:
+            if matching_size is None:
+                matching_size = [disp_pred_left.size()[0], 1, 1, 1, 1]
             return tensor.tile(matching_size)
 
         disp_gt_left = _tiler(disp_gt_left)
@@ -142,7 +144,7 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left[-1]), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
-    def validation_step(self, batch: st.Sample_Torch, batch_idx) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
+    def validation_step(self, batch: st.Sample_Torch, batch_idx: int) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
         """
         Compute the L1 loss (End-point-error) over the validation set for the left disparity map.
 
@@ -162,7 +164,7 @@ class StereoNet(pl.LightningModule):
             fig = utils.plot_figure(left[0].detach().cpu(), right[0].detach().cpu(), disp_gt[0].detach().cpu(), disp_pred[0].detach().cpu())
             self.logger.experiment.add_figure("generated_images", fig, self.current_epoch, close=True)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Dict[str, Any]:
         """
         RMSProp optimizer + Exponentially decaying learning rate.
 
@@ -249,7 +251,7 @@ class CostVolume(torch.nn.Module):
         return cost
 
 
-def compute_volume(reference_embedding, target_embedding, max_disps, side: str = 'left') -> torch.Tensor:
+def compute_volume(reference_embedding: torch.Tensor, target_embedding: torch.Tensor, max_disps: int, side: str = 'left') -> torch.Tensor:
     """
     Refer to the doc string in CostVolume.forward.
     Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
@@ -276,7 +278,7 @@ class Refinement(torch.nn.Module):
     Several of these classes will be instantiated to perform the *cascading* refinement.  Refer to the original paper for a full discussion.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         dilations = [1, 2, 4, 8, 1, 1]

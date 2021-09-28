@@ -2,9 +2,9 @@
 Several type aliases to make type hints cleaner.
 """
 
-from typing import Union, Dict, List
+from typing import Union, Dict, List, overload
 
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractstaticmethod
 
 import torch
 import numpy as np
@@ -13,30 +13,21 @@ import numpy.typing as npt
 
 Number = Union[int, float]
 
-Sample_Torch = Dict[str, torch.Tensor]
 Sample_Numpy = Union[Dict[str, npt.NDArray[np.uint8]], Dict[str, npt.NDArray[np.float32]]]
-Sample_General = Union[Sample_Torch, Sample_Numpy]
-
-
-# TODO: These Transformer classes are created to try and work around typing but it's probably better to use @override.  I'll look into it
-class NumpyTransformer(ABC):
-    @abstractmethod
-    def __call__(self, x: Sample_Numpy) -> Sample_Numpy:  # pylint: disable=invalid-name
-        pass
+Sample_Torch = Dict[str, torch.Tensor]
+Sample = Union[Sample_Numpy, Sample_Torch]
 
 
 class TorchTransformer(ABC):
     @abstractmethod
-    def __call__(self, x: Sample_Torch) -> Sample_Torch:  # pylint: disable=invalid-name
+    def __call__(self, x: Sample_Torch) -> Sample_Torch:
         pass
 
 
 class NumpyToTorchTransformer(ABC):
     @abstractmethod
-    def __call__(self, x: Sample_Numpy) -> Sample_Torch:  # pylint: disable=invalid-name
+    def __call__(self, x: Sample_Numpy) -> Sample_Torch:
         pass
 
 
-Transformer = Union[NumpyTransformer, TorchTransformer, NumpyToTorchTransformer]
-# Transformer = Union[TorchTransformer, NumpyToTorchTransformer]
-Transformers = Union[Transformer, List[Transformer]]
+TorchTransformers = Union[TorchTransformer, List[TorchTransformer]]

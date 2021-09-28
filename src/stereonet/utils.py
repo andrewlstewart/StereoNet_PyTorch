@@ -19,18 +19,6 @@ import stereonet.stereonet_types as st
 import stereonet.utils_io as utils_io
 
 
-# class MissingToTensorTransform(Exception):
-#     """
-#     The dataset must return a tensor and ToTensor needs to be in the transforms somewhere.
-#     """
-
-
-# class TooManyToTensorTransforms(Exception):
-#     """
-#     Transform list has multiple ToTensor transforms.  Only need to do this once.
-#     """
-
-
 def image_loader(path: Path) -> npt.NDArray[np.uint8]:  # pylint: disable=missing-function-docstring
     img: npt.NDArray[np.uint8] = io.imread(path)
     return img
@@ -60,7 +48,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
 
     def __init__(self,
                  root_path: Path,
-                 transforms: st.Transformers,
+                 transforms: st.TorchTransformers,
                  string_exclude: Optional[str] = None,
                  string_include: Optional[str] = None
                  ):
@@ -69,7 +57,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         self.string_include = string_include
 
         if not isinstance(transforms, list):
-            _transforms: List[st.Transformer] = [transforms]
+            _transforms = [transforms]
         else:
             _transforms = transforms
 
@@ -80,7 +68,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
     def __len__(self) -> int:
         return len(self.left_image_path)
 
-    def __getitem__(self, index) -> st.Sample_Torch:
+    def __getitem__(self, index: int) -> st.Sample_Torch:
         left = image_loader(self.left_image_path[index])
         right = image_loader(self.right_image_path[index])
 
@@ -92,31 +80,15 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         disp_right = disp_right[..., np.newaxis]
         disp_right = np.ascontiguousarray(disp_right)
 
+        # I'm not sure why I need the following type ignore...
         sample: st.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
 
+        torch_sample = ToTensor()(sample)
+
         for transform in self.transforms:
-            sample = transform(sample)  # type: ignore[assignment, arg-type]
+            torch_sample = transform(torch_sample)
 
-        # TODO: Figure out how to properly type this.
-
-        # type_flag = 'numpy'
-        # for transform in self.transforms:
-        #     if isinstance(transform, ToTensor):
-        #         if type_flag == 'numpy':
-        #             type_flag = 'tensor'
-        #             torch_sample: st.Sample_Torch = transform(sample)
-        #             continue
-        #         else:
-        #             raise TooManyToTensorTransforms()
-        #     if type_flag == 'numpy':
-        #         sample = transform(sample)
-        #     if type_flag == 'tensor':
-        #         torch_sample = transform(torch_sample)
-
-        # if type_flag == 'numpy':
-        #     raise MissingToTensorTransform()
-
-        return sample  # type: ignore[return-value]
+        return torch_sample
 
     def get_paths(self) -> Tuple[List[Path], List[Path], List[Path], List[Path]]:
         """
@@ -247,7 +219,8 @@ class ToTensor(st.NumpyToTorchTransformer):
     Disparities are already floats and just get turned into tensors.
     """
 
-    def __call__(self, sample: st.Sample_Numpy) -> st.Sample_Torch:
+    @staticmethod
+    def __call__(sample: st.Sample_Numpy) -> st.Sample_Torch:
         torch_sample: st.Sample_Torch = {}
         for name, x in sample.items():  # pylint: disable=invalid-name
             torch_sample[name] = T.functional.to_tensor(x)
@@ -275,7 +248,8 @@ class Rescale(st.TorchTransformer):
     Rescales the left and right image tensors (initially ranged between [0, 1]) and rescales them to be between [-1, 1].
     """
 
-    def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
+    @staticmethod
+    def __call__(sample: st.Sample_Torch) -> st.Sample_Torch:
         for name in ['left', 'right']:
             sample[name] = (sample[name] - 0.5) * 2
         return sample
