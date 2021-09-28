@@ -33,7 +33,7 @@ for transformer in transformers:
     sample = transformer(sample)
 
 # Load in the model from the trained checkpoint
-# model = StereoNet.load_from_checkpoint(Path(path_to_checkpoint))
+# model = StereoNet.load_from_checkpoint(path_to_checkpoint)
 
 # Here just instantiate the model with random weights
 model = StereoNet()
@@ -44,7 +44,7 @@ with torch.no_grad():
     batched_prediction = model(sample)
 
 # Remove the batch diemnsion and switch back to channels last notation
-single_prediction = batched_prediction[0]  # [batch, ...] -> [...]
+single_prediction = batched_prediction[0].numpy()  # [batch, ...] -> [...]
 single_prediction = np.moveaxis(single_prediction, 0, 2)  # [channel, height, width] -> [height, width, channel]
 
 single_prediction.shape
