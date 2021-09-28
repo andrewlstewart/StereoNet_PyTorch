@@ -2,9 +2,9 @@
 Several type aliases to make type hints cleaner.
 """
 
-from typing import Union, Dict, List, overload
+from typing import Union, Dict, List
 
-from abc import ABC, abstractmethod, abstractstaticmethod
+from abc import ABC, abstractmethod
 
 import torch
 import numpy as np

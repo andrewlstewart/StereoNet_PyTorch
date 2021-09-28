@@ -227,6 +227,18 @@ class ToTensor(st.NumpyToTorchTransformer):
         return torch_sample
 
 
+class PadSampleToBatch(st.TorchTransformer):
+    """
+    Unsqueezes the first dimension to be 1 when loading in single image pairs.
+    """
+
+    @staticmethod
+    def __call__(sample: st.Sample_Torch) -> st.Sample_Torch:
+        for name, x in sample.items():  # pylint: disable=invalid-name
+            sample[name] = torch.unsqueeze(x, dim=0)
+        return sample
+
+
 # class RandomHorizontalFlip(st.Transformer):
 #     """
 #     Randomly flip all 3 tensors at the same time.
