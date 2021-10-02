@@ -57,11 +57,11 @@ single_prediction.shape
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are decent.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 4.3"> pixels.
+Currently training, early results are decent.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
 
-Epoch 10:
+Epoch 20:
 
-<img src="./readme_images/Epoch_10_Val.JPG" alt="Validation image" style="width:1000px;"/>
+<img src="./readme_images/Epoch_20_Val.JPG" alt="Validation image" style="width:1000px;"/>
 
 Implemented using PyTorch Lightning as a learning exercise to learn about stereo networks, PyTorch, and PyTorch lightning.  Feel free to make any comments or recommendations for better coding practice.
 

@@ -38,17 +38,18 @@ class StereoNet(pl.LightningModule):
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
         self.candidate_disparities = candidate_disparities
-        self.max_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
         self.mask = mask  # TODO: Implement in loss function
 
         self.feature_extractor_filters = feature_extractor_filters
         self.cost_volumizer_filters = cost_volumizer_filters
 
+        self._max_downsampled_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
+
         # Feature network
         self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=self.feature_extractor_filters, k_downsampling_layers=self.k_downsampling_layers)
 
         # Cost volume
-        self.cost_volumizer = CostVolume(in_channels=self.feature_extractor_filters, out_channels=self.cost_volumizer_filters, max_disps=self.max_disps)
+        self.cost_volumizer = CostVolume(in_channels=self.feature_extractor_filters, out_channels=self.cost_volumizer_filters, max_downsampled_disps=self._max_downsampled_disps)
 
         # Hierarchical Refinement: Edge-Aware Upsampling
         self.refiners = nn.ModuleList()
@@ -213,13 +214,13 @@ class CostVolume(torch.nn.Module):
     Computes the cost volume and filters it using the 3D convolutional network.  Refer to original paper for a full discussion.
     """
 
-    def __init__(self, in_channels: int, out_channels: int, max_disps: int):
+    def __init__(self, in_channels: int, out_channels: int, max_downsampled_disps: int):
         super().__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.max_disps = max_disps
+        self._max_downsampled_disps = max_downsampled_disps
 
         net: OrderedDict[str, nn.Module] = OrderedDict()
 
@@ -243,7 +244,7 @@ class CostVolume(torch.nn.Module):
         """
         reference_embedding, target_embedding = x
 
-        cost = compute_volume(reference_embedding, target_embedding, max_disps=self.max_disps, side=side)
+        cost = compute_volume(reference_embedding, target_embedding, max_downsampled_disps=self._max_downsampled_disps, side=side)
 
         cost = self.net(cost)
         cost = torch.squeeze(cost, dim=1)
@@ -251,7 +252,7 @@ class CostVolume(torch.nn.Module):
         return cost
 
 
-def compute_volume(reference_embedding: torch.Tensor, target_embedding: torch.Tensor, max_disps: int, side: str = 'left') -> torch.Tensor:
+def compute_volume(reference_embedding: torch.Tensor, target_embedding: torch.Tensor, max_downsampled_disps: int, side: str = 'left') -> torch.Tensor:
     """
     Refer to the doc string in CostVolume.forward.
     Refer to https://github.com/meteorshowers/X-StereoLab/blob/9ae8c1413307e7df91b14a7f31e8a95f9e5754f9/disparity/models/stereonet_disp.py
@@ -260,10 +261,10 @@ def compute_volume(reference_embedding: torch.Tensor, target_embedding: torch.Te
         Line 81 https://github.com/wyf2017/DSMnet/blob/b61652dfb3ee84b996f0ad4055eaf527dc6b965f/models/util_conv.py
     """
     batch, channel, height, width = reference_embedding.size()
-    cost = torch.Tensor(batch, channel, max_disps, height, width).zero_()
+    cost = torch.Tensor(batch, channel, max_downsampled_disps, height, width).zero_()
     cost = cost.type_as(reference_embedding)  # PyTorch Lightning handles the devices
     cost[:, :, 0, :, :] = reference_embedding - target_embedding
-    for idx in range(1, max_disps):
+    for idx in range(1, max_downsampled_disps):
         if side == 'left':
             cost[:, :, idx, :, idx:] = reference_embedding[:, :, :, idx:] - target_embedding[:, :, :, :-idx]
         if side == 'right':
@@ -344,7 +345,7 @@ class ResBlock(torch.nn.Module):
         return out
 
 
-def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
+def soft_argmin(cost: torch.Tensor, max_downsampled_disps: int) -> torch.Tensor:
     """
     Soft argmin function described in the original paper.  The disparity grid creates the first 'd' value in equation 2 while
     cost is the C_i(d) term.  The exp/sum(exp) == softmax function.
@@ -352,7 +353,7 @@ def soft_argmin(cost: torch.Tensor, max_disps: int) -> torch.Tensor:
     disparity_softmax = F.softmax(-cost, dim=1)
     # TODO: Bilinear interpolate the disparity dimension back to D to perform the proper d*exp(-C_i(d))
 
-    disparity_grid = torch.linspace(0, max_disps, disparity_softmax.size(1)).reshape(1, -1, 1, 1)
+    disparity_grid = torch.linspace(0, max_downsampled_disps, disparity_softmax.size(1)).reshape(1, -1, 1, 1)
     disparity_grid = disparity_grid.type_as(disparity_softmax)
 
     disp = torch.sum(disparity_softmax * disparity_grid, dim=1, keepdim=True)
