@@ -51,9 +51,16 @@ single_prediction.shape
 >>> (540, 960, 1)
 ```
 
+## Weights
+Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
+
+* Max disparity parameter during training = 256 with the mask applied
+* 3 downsampling (1/8 resolution) and 3 refinement layers
+* Validation EPE of 3.93 for all pixels (including >256).
+
 ## Notes
 
-**Currently training (2021-09-26) (~12hrs per epoch on my 1070)**
+**Currently training (2021-10-03) (~12hrs per epoch on my 1070)**
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
@@ -97,3 +104,4 @@ The paper clearly states they use (many) batch norm layers while simultaneously 
 Currently unclear
 
 * Do I need to have a max_disps parameter to help the model learn faster/better?
+* How do the original authors come up with 360k parameters in their model without refinement layers.  Maximum I can conceivable calculate is [~280k](./readme_images/questions.md)...
