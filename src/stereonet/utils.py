@@ -244,7 +244,7 @@ class Resize(st.TorchTransformer):
     Resizes each of the images in a batch to a given height and width
     """
 
-    def __init__(self, size: Tuple[int]) -> None:
+    def __init__(self, size: Tuple[int, int]) -> None:
         self.size = size
 
     def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:

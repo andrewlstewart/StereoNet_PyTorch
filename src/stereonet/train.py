@@ -47,7 +47,7 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     model = StereoNet(k_downsampling_layers=args.k_downsampling_layers, k_refinement_layers=args.k_refinement_layers, candidate_disparities=args.candidate_disparities, mask=False)
 
     # Get datasets
-    train_transforms: st.Transforms = [
+    train_transforms: st.TorchTransformers = [
         utils.Rescale(),
         utils.CenterCrop(scale=args.crop_percentage)
         # TODO: Color jitter? or RandomCrops?
@@ -55,7 +55,7 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     train_dataset = utils.SceneflowDataset(args.sceneflow_root, string_exclude='TEST', transforms=train_transforms)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=8, drop_last=False)
 
-    val_transforms: st.Transforms = [utils.Rescale()]
+    val_transforms: st.TorchTransformers = [utils.Rescale()]
     val_dataset = utils.SceneflowDataset(args.sceneflow_root, string_include='TEST', transforms=val_transforms)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.val_batch_size, shuffle=False, num_workers=8, drop_last=False)
 

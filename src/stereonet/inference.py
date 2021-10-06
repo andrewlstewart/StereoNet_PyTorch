@@ -99,7 +99,7 @@ def stereocam_inference() -> None:  # pylint: disable=missing-function-docstring
 
     device = torch.device("cuda:0" if False else "cpu")
 
-    model = StereoNet.load_from_checkpoint(checkpoint_path)
+    model = StereoNet.load_from_checkpoint(str(checkpoint_path))
     model.to(device)
     model.eval()
 
