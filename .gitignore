@@ -136,3 +136,6 @@ lightning_logs/
 
 # Permanently saved models
 saved_models/
+
+# Data folder
+data/

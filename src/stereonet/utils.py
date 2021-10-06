@@ -239,6 +239,20 @@ class PadSampleToBatch(st.TorchTransformer):
         return sample
 
 
+class Resize(st.TorchTransformer):
+    """
+    Resizes each of the images in a batch to a given height and width
+    """
+
+    def __init__(self, size: Tuple[int]) -> None:
+        self.size = size
+
+    def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
+        for name, x in sample.items():
+            sample[name] = T.functional.resize(x, self.size)
+        return sample
+
+
 # class RandomHorizontalFlip(st.Transformer):
 #     """
 #     Randomly flip all 3 tensors at the same time.

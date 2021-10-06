@@ -11,6 +11,8 @@ import statistics
 
 import torch
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+import numpy as np
 
 from stereonet.model import StereoNet
 import stereonet.utils as utils
@@ -87,5 +89,44 @@ def sceneflow_inference() -> None:  # pylint: disable=missing-function-docstring
     print(f'Validation EPE: {loss_maxdisp/batch_idx}')
 
 
+def stereocam_inference() -> None:  # pylint: disable=missing-function-docstring
+    """
+    Forward inference using an image captured on the StereoCam
+    """
+
+    checkpoint_path = Path(r"C:\Users\andre\Documents\Python\StereoNet_PyTorch_Typed\saved_models\version_42\checkpoints\epoch=27-step=992711.ckpt")
+    image_path = Path(r"C:\Users\andre\Documents\Python\StereoNet_PyTorch_Typed\data\image.jpg")
+
+    device = torch.device("cuda:0" if False else "cpu")
+
+    model = StereoNet.load_from_checkpoint(checkpoint_path)
+    model.to(device)
+    model.eval()
+
+    img = utils.image_loader(image_path)
+
+    left_img = img[:, :2028, :]
+    right_img = img[:, 2028:, :]
+
+    # left_img = img[:, 2028:, :]
+    # right_img = img[:, :2028, :]
+
+    numpy_batch = {'left': left_img, 'right': right_img}
+    batch = utils.ToTensor()(numpy_batch)
+    tensor_transformers = [utils.Resize((640, 960)), utils.Rescale(), utils.PadSampleToBatch()]
+    for transformer in tensor_transformers:
+        batch = transformer(batch)
+
+    with torch.no_grad():
+        prediction = model(batch)[0].cpu().numpy()
+    prediction = np.moveaxis(prediction, 0, 2)
+
+    plt.imshow(prediction, vmin=prediction.min(), vmax=prediction.max())
+    plt.show()
+
+    print('stall')
+
+
 if __name__ == "__main__":
-    sceneflow_inference()
+    # sceneflow_inference()
+    stereocam_inference()
