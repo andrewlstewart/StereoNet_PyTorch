@@ -1,4 +1,4 @@
-name: StereoNet Tests
+name: Tests
 
 on:
   - push
