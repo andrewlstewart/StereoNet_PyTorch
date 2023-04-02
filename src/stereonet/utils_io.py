@@ -5,7 +5,7 @@ https://lmb.informatik.uni-freiburg.de/resources/datasets/IO.py
 
 """
 
-from typing import Tuple
+from typing import Tuple, Union
 from pathlib import Path
 import re
 
@@ -13,7 +13,7 @@ import numpy as np
 import numpy.typing as npt
 
 
-def readPFM(path: Path) -> Tuple[npt.NDArray[np.float32], float]:
+def readPFM(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
     """
     Read in a PFM formated file and return a image/disparity
     """

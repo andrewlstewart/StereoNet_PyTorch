@@ -29,12 +29,12 @@ import stereonet.utils_io as utils_io  # noqa: E402
 RNG = np.random.default_rng()
 
 
-def image_loader(path: Path) -> npt.NDArray[np.uint8]:  # pylint: disable=missing-function-docstring
+def image_loader(path: Union[Path, str]) -> npt.NDArray[np.uint8]:  # pylint: disable=missing-function-docstring
     img: npt.NDArray[np.uint8] = io.imread(path)
     return img
 
 
-def pfm_loader(path: Path) -> Tuple[npt.NDArray[np.float32], float]:  # pylint: disable=missing-function-docstring
+def pfm_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:  # pylint: disable=missing-function-docstring
     pfm: Tuple[npt.NDArray[np.float32], float] = utils_io.readPFM(path)
     return pfm
 
@@ -151,8 +151,6 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
                  transforms: st.TorchTransformers,
                  ):
 
-        raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
-
         self.root_path = root_path
 
         if not isinstance(transforms, list):
@@ -171,6 +169,8 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
                 self.right_image_path.append(right)
                 self.left_disp_path.append(disp_left)
                 self.right_disp_path.append(disp_right)
+
+        raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
 
     def __len__(self) -> int:
         return len(self.left_image_path)
@@ -466,7 +466,7 @@ def construct_keystone_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
                 f.write("\n".join(rows))
 
     dataset = KeystoneDataset(root_path=cfg.root_path,
-                              image_paths=training_paths if is_training else validation_paths,
+                              image_paths=str(training_paths) if is_training else str(validation_paths),
                               transforms=transforms,
                               )
     return dataset

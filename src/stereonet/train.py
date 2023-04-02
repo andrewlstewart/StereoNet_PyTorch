@@ -37,7 +37,8 @@ def main(cfg: DictConfig) -> int:
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     logger = TensorBoardLogger(save_dir=cfg.logging.lightning_log_root, name="lightning_logs")
-    trainer = pl.Trainer(gpus=cfg.global_settings.num_gpus,
+    trainer = pl.Trainer(devices=cfg.global_settings.devices.num,
+                         accelerator=cfg.global_settings.devices.type,
                          min_epochs=cfg.training.min_epochs,
                          max_epochs=cfg.training.max_epochs,
                          logger=logger,

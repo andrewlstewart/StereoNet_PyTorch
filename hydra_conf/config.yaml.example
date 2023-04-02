@@ -4,7 +4,9 @@ hydra:
 
 global_settings:
   random_seed: 42  # type=int, help="Seed to set the torch random generator for reproducible training runs"
-  num_gpus: 1  # type=int, help="Number of GPUs to use during training"
+  devices: 
+    num: 1  # type=int, help="Number of devices to use during training"
+    type: "gpu"  # type=str, help="Type of device to use during training"
 
 logging:
   lightning_log_root: "./logging/${now:%Y-%m-%d}/${now:%H-%M-%S}"  # type=str, help="Root path to output logs files to"
