@@ -15,7 +15,7 @@ import stereonet.utils as utils
 
 @hydra.main(version_base=None)
 def main(cfg: DictConfig) -> int:
-    
+
     # Instantiate model with built in optimizer
     if 'model_checkpoint_path' in cfg.training:
         model = StereoNet.load_from_checkpoint(cfg.model.model_checkpoint_path)
@@ -32,7 +32,7 @@ def main(cfg: DictConfig) -> int:
                                              loader_cfg=cfg.loader,
                                              is_training=False,
                                              shuffle=False, num_workers=8, drop_last=False)
-    
+
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss_epoch', save_top_k=-1, mode='min')
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
