@@ -1,0 +1,53 @@
+hydra:
+  run:
+    dir: ./logging/${now:%Y-%m-%d}/${now:%H-%M-%S}/hydra
+
+global_settings:
+  random_seed: 42  # type=int, help="Seed to set the torch random generator for reproducible training runs"
+  num_gpus: 1  # type=int, help="Number of GPUs to use during training"
+
+logging:
+  lightning_log_root: "./logging/${now:%Y-%m-%d}/${now:%H-%M-%S}"  # type=str, help="Root path to output logs files to"
+
+model:
+  k_downsampling_layers: 3
+  k_refinement_layers: 3
+  candidate_disparities: 256
+
+loader:
+  batch_size: 1  # type=int, help='Number of examples for data loading.'
+
+training:
+  min_epochs: 20  # type=int, help="Number of iterations of training over the full train dataset"
+  max_epochs: 50  # type=int, help="Number of iterations of training over the full train dataset"
+  optimizer:
+    RMSprop:
+      learning_rate: 2.54e-4  # type=float, help="Starting learning rate"
+      weight_decay: 0.0001
+  scheduler:
+    ExponentialLR:
+      gamma: 0.9
+  data:
+    # - type: Sceneflow
+    #   root_path: "E:\\SceneFlow"  # type=str, help='Path to the root of the Sceneflow depth files'
+    - type: KeystoneDepth
+      root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
+      split_ratio: 0.9  # type=float, help='Train:Test split ratio.'
+      transforms:
+        - rescale
+        - center_crop:
+            scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'
+  debug:
+    enabled: False  # type=bool, help="Whether or not to use the following debugging flags"
+    limit_train_batches: 10_000  # type=int, help="Debugging, how many batches to train on"
+
+validation:
+  data:
+    # - type: Sceneflow
+    #   root_path: "E:\\SceneFlow"  # type=str, help='Path to the root of the Sceneflow depth files'
+    - type: KeystoneDepth
+      root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
+      transforms:
+        - rescale
+        - center_crop:
+            scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'

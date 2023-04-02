@@ -132,10 +132,16 @@ dmypy.json
 .vscode/
 
 # PyTorch Lightning loggers
-lightning_logs/
+logging/
 
 # Permanently saved models
 saved_models/
 
 # Data folder
 data/
+
+# Hiding config file just to make the configs easier to understand and self-generate
+hydra_conf/config.yaml
+hydra_conf/training_paths.txt
+hydra_conf/validation_paths.txt
+hydra_conf/validation_paths.txt

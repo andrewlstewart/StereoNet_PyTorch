@@ -4,19 +4,29 @@ Helper functions for StereoNet training.
 Includes a dataset object for the Scene Flow image and disparity dataset.
 """
 
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union, Set
 from pathlib import Path
+import os
+
+import hydra
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig
 
 import numpy as np
 import numpy.typing as npt
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from skimage import io
 import torchvision.transforms as T
 import matplotlib.pyplot as plt
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+import cv2  # noqa: E402
 
-import stereonet.stereonet_types as st
-import stereonet.utils_io as utils_io
+import stereonet.stereonet_types as st  # noqa: E402
+import stereonet.utils_io as utils_io  # noqa: E402
+
+
+RNG = np.random.default_rng()
 
 
 def image_loader(path: Path) -> npt.NDArray[np.uint8]:  # pylint: disable=missing-function-docstring
@@ -126,6 +136,108 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
             right_image_path.append(r_path)
             left_disp_path.append(dl_path)
             right_disp_path.append(dr_path)
+
+        return (left_image_path, right_image_path, left_disp_path, right_disp_path)
+
+
+class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why this typing ignore is needed on the class level...
+    """
+    https://keystonedepth.cs.washington.edu/download
+    """
+
+    def __init__(self,
+                 root_path: str,
+                 image_paths: str,
+                 transforms: st.TorchTransformers,
+                 ):
+
+        raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
+
+        self.root_path = root_path
+
+        if not isinstance(transforms, list):
+            _transforms = [transforms]
+        else:
+            _transforms = transforms
+        self.transforms = _transforms
+
+        self._image_extensions = {'.png'}
+
+        self.left_image_path, self.right_image_path, self.left_disp_path, self.right_disp_path = [], [], [], []
+        with open(image_paths, 'r') as f:
+            for line in f:
+                left, right, disp_left, disp_right = line.rstrip().split(',')
+                self.left_image_path.append(left)
+                self.right_image_path.append(right)
+                self.left_disp_path.append(disp_left)
+                self.right_disp_path.append(disp_right)
+
+    def __len__(self) -> int:
+        return len(self.left_image_path)
+
+    def __getitem__(self, index: int) -> st.Sample_Torch:
+        left = image_loader(os.path.join(self.root_path, self.left_image_path[index]))
+        right = image_loader(os.path.join(self.root_path, self.right_image_path[index]))
+
+        disp_left = cv2.imread(os.path.join(self.root_path, self.left_disp_path[index]), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        # disp_left = disp_left[..., np.newaxis]
+        disp_left = np.ascontiguousarray(disp_left)
+
+        disp_right = cv2.imread(os.path.join(self.root_path, self.right_disp_path[index]), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        # disp_right = disp_right[..., np.newaxis]
+        disp_right = np.ascontiguousarray(disp_right)
+
+        # I'm not sure why I need the following type ignore...
+        sample: st.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
+
+        torch_sample = ToTensor()(sample)
+
+        for transform in self.transforms:
+            torch_sample = transform(torch_sample)
+
+        return torch_sample
+
+    @staticmethod
+    def get_paths(root_path: str, image_extensions: Set[str]) -> Tuple[List[Path], List[Path], List[Path], List[Path]]:
+        """
+        if shuffle is None, don't shuffle, else shuffle.
+        """
+
+        left_image_path = []
+        right_image_path = []
+        left_disp_path = []
+        right_disp_path = []
+
+        # For each left image, do some path manipulation to find the corresponding right
+        # image and left/right disparity.
+        for root, dirs, files in os.walk(root_path):
+            for file_ in files:
+                name, ext = os.path.splitext(file_)
+                if ext not in image_extensions:
+                    continue
+
+                if name[-1] != 'L':
+                    continue
+
+                l_path = os.path.join(root, file_)
+                r_path = os.path.join(root, name[:-1] + 'R' + ext)
+                assert os.path.exists(r_path)
+
+                parent_path = os.path.dirname(os.path.dirname(root))  # idempotent
+                parent_path = os.path.join(os.path.join(os.path.join(parent_path, 'processed'), 'rectified'), 'disp_info_LR')
+                dl_path = os.path.join(parent_path, name[:-1] + 'L' + '.exr')
+                dr_path = os.path.join(parent_path, name[:-1] + 'R' + '.exr')
+
+                assert os.path.exists(dl_path)
+                assert os.path.exists(dr_path)
+
+                # if not r_path.exists() or not dl_path.exists():
+                #     continue
+
+                left_image_path.append(l_path)
+                right_image_path.append(r_path)
+                left_disp_path.append(dl_path)
+                right_disp_path.append(dr_path)
 
         return (left_image_path, right_image_path, left_disp_path, right_disp_path)
 
@@ -304,3 +416,91 @@ def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, 
     cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.27])
     fig.colorbar(im, cax=cbar_ax)
     return fig
+
+
+def convert_transforms(transforms: List[Union[str, DictConfig]]) -> st.TorchTransformers:
+    _lookup = {
+        'rescale': Rescale,
+        'center_crop': CenterCrop,
+    }
+    transforms_ = []
+    for transform in transforms:
+        if isinstance(transform, str):
+            transforms_.append(_lookup[transform]())
+        if isinstance(transform, DictConfig):
+            assert len(transform) == 1
+            key = next(iter(transform))
+            transforms_.append(_lookup[key](**transform[key]))
+    return transforms_
+
+
+def construct_sceneflow_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
+    transforms = convert_transforms(cfg.transforms)
+    dataset = SceneflowDataset(root_path=Path(cfg.root_path),
+                               transforms=transforms,
+                               string_exclude='TEST' if is_training else None,
+                               string_include=None if is_training else 'TEST',
+                               )
+    return dataset
+
+
+def construct_keystone_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
+    transforms = convert_transforms(cfg.transforms)
+
+    root_path = Path(HydraConfig.get().runtime.cwd) / 'hydra_conf'
+
+    training_paths = root_path / 'training_paths.txt'
+    validation_paths = root_path / 'validation_paths.txt'
+
+    if (is_training and not training_paths.exists()) or (not is_training and not validation_paths.exists()):
+        assert not training_paths.exists() and not validation_paths.exists(), "Either both training and validation paths should exist, or neither should exist."
+        left_image_path, right_image_path, left_disp_path, right_disp_path = KeystoneDataset.get_paths(cfg.root_path, image_extensions={'.png'})
+        train_indices = set(RNG.choice(len(left_image_path), size=int(cfg.split_ratio*len(left_image_path)), replace=False))
+        val_indices = set(range(len(left_image_path))) - train_indices
+
+        for path, indices in [(training_paths, train_indices), (validation_paths, val_indices)]:
+            with open(path, 'w') as f:
+                root = Path(left_image_path[0]).parents[2]
+                rows = [f'{Path(left_image_path[i]).relative_to(root)},{Path(right_image_path[i]).relative_to(root)},{Path(left_disp_path[i]).relative_to(root)},{Path(right_disp_path[i]).relative_to(root)}'
+                        for i in indices]
+                f.write("\n".join(rows))
+
+    dataset = KeystoneDataset(root_path=cfg.root_path,
+                              image_paths=training_paths if is_training else validation_paths,
+                              transforms=transforms,
+                              )
+    return dataset
+
+
+def construct_dataloaders(data_cfg: DictConfig,
+                          loader_cfg: DictConfig,
+                          is_training: bool,
+                          **kwargs) -> DataLoader:
+    for datum_cfg in data_cfg:
+        if datum_cfg.type not in {'KeystoneDepth', 'Sceneflow'}:
+            raise ValueError(f'Unknown dataset type {datum_cfg["type"]}')
+
+        if datum_cfg.type == 'KeystoneDepth':
+            dataset = construct_keystone_dataset(datum_cfg, is_training)
+        if datum_cfg.type == 'Sceneflow':
+            dataset = construct_sceneflow_dataset(datum_cfg, is_training)
+
+    return torch.utils.data.DataLoader(dataset, batch_size=loader_cfg['batch_size'], **kwargs)
+
+
+@hydra.main(version_base=None)
+def main(cfg: DictConfig) -> int:
+    global RNG
+    RNG = np.random.default_rng(cfg.global_settings.random_seed)
+    # _ = construct_dataloaders(data_cfg=cfg.validation.data, loader_cfg=cfg.loader, training=False)
+    dataloader = construct_dataloaders(data_cfg=cfg.training.data,
+                                       loader_cfg=cfg.loader,
+                                       is_training=True,
+                                       shuffle=True, num_workers=8, drop_last=False)
+    for ex in dataloader:
+        break
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
