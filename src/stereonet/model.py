@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 from lightning.pytorch import loggers as pl_loggers
 
-import stereonet.stereonet_types as st
+import stereonet.types_stereonet as ts
 import stereonet.utils as utils
 
 
@@ -57,7 +57,7 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
 
-    def forward_pyramid(self, sample: st.Sample_Torch, side: str = 'left') -> List[torch.Tensor]:
+    def forward_pyramid(self, sample: ts.Sample_Torch, side: str = 'left') -> List[torch.Tensor]:
         """
         This is the heart of the forward pass.  Given a Dictionary keyed with 'left' and 'right' tensors, perform the feature extraction, cost volume estimation, cascading
         refiners to return a list of the disparities.  First entry of the returned list is the lowest resolution while the last is the full resolution disparity.
@@ -90,14 +90,14 @@ class StereoNet(pl.LightningModule):
 
         return disparity_pyramid
 
-    def forward(self, sample: st.Sample_Torch) -> torch.Tensor:  # type: ignore[override] # pylint: disable=arguments-differ
+    def forward(self, sample: ts.Sample_Torch) -> torch.Tensor:  # type: ignore[override] # pylint: disable=arguments-differ
         """
         Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
         """
         disparities = self.forward_pyramid(sample, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch: st.Sample_Torch, _) -> torch.Tensor:  # type: ignore[override, no-untyped-def] # pylint: disable=arguments-differ
+    def training_step(self, batch: ts.Sample_Torch, _) -> torch.Tensor:  # type: ignore[override, no-untyped-def] # pylint: disable=arguments-differ
         """
         Compute the disparities for both the left and right volumes then compute the loss for each.  Finally take the mean between the two losses and
         return that as the final loss.
@@ -146,7 +146,7 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left[-1]), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
-    def validation_step(self, batch: st.Sample_Torch, batch_idx: int) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
+    def validation_step(self, batch: ts.Sample_Torch, batch_idx: int) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
         """
         Compute the L1 loss (End-point-error) over the validation set for the left disparity map.
 
@@ -363,7 +363,7 @@ def soft_argmin(cost: torch.Tensor, max_downsampled_disps: int) -> torch.Tensor:
     return disp
 
 
-def robust_loss(x: torch.Tensor, alpha: st.Number, c: st.Number) -> torch.Tensor:  # pylint: disable=invalid-name
+def robust_loss(x: torch.Tensor, alpha: ts.Number, c: ts.Number) -> torch.Tensor:  # pylint: disable=invalid-name
     """
     A General and Adaptive Robust Loss Function (https://arxiv.org/abs/1701.03077)
     """

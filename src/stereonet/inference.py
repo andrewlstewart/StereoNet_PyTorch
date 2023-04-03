@@ -16,7 +16,7 @@ import numpy as np
 
 from stereonet.model import StereoNet
 import stereonet.utils as utils
-from stereonet import stereonet_types as st
+from stereonet import types_stereonet as ts
 
 
 def parse_test_args() -> argparse.Namespace:
@@ -66,7 +66,7 @@ def sceneflow_inference() -> None:
     model.to(device)
     model.eval()
 
-    val_transforms: List[st.TorchTransformer] = [utils.Rescale()]
+    val_transforms: List[ts.TorchTransformer] = [utils.Rescale()]
     val_dataset = utils.SceneflowDataset(args.sceneflow_root, string_include='TEST', transforms=val_transforms)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last=False)
 

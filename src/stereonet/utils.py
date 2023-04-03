@@ -22,14 +22,14 @@ import matplotlib.pyplot as plt
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2  # noqa: E402
 
-import stereonet.stereonet_types as st  # noqa: E402
-import stereonet.utils_hydra_typing as ht  # noqa: E402
+import stereonet.types_stereonet as ts  # noqa: E402
+import stereonet.types_hydra as th  # noqa: E402
 import stereonet.utils_io as utils_io  # noqa: E402
 
 
 CS = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
-CS.store(name="config", node=ht.StereoNetConfig)
+CS.store(name="config", node=th.StereoNetConfig)
 
 
 RNG = np.random.default_rng()
@@ -64,7 +64,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
 
     def __init__(self,
                  root_path: Path,
-                 transforms: st.TorchTransformers,
+                 transforms: ts.TorchTransformers,
                  string_exclude: Optional[str] = None,
                  string_include: Optional[str] = None
                  ):
@@ -84,7 +84,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
     def __len__(self) -> int:
         return len(self.left_image_path)
 
-    def __getitem__(self, index: int) -> st.Sample_Torch:
+    def __getitem__(self, index: int) -> ts.Sample_Torch:
         left = image_loader(self.left_image_path[index])
         right = image_loader(self.right_image_path[index])
 
@@ -97,7 +97,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         disp_right = np.ascontiguousarray(disp_right)
 
         # I'm not sure why I need the following type ignore...
-        sample: st.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
+        sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
 
         torch_sample = ToTensor()(sample)
 
@@ -154,7 +154,7 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
     def __init__(self,
                  root_path: str,
                  image_paths: str,
-                 transforms: st.TorchTransformers,
+                 transforms: ts.TorchTransformers,
                  ):
 
         self.root_path = root_path
@@ -181,7 +181,7 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
     def __len__(self) -> int:
         return len(self.left_image_path)
 
-    def __getitem__(self, index: int) -> st.Sample_Torch:
+    def __getitem__(self, index: int) -> ts.Sample_Torch:
         left = image_loader(os.path.join(self.root_path, self.left_image_path[index]))
         right = image_loader(os.path.join(self.root_path, self.right_image_path[index]))
 
@@ -194,7 +194,7 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
         disp_right = np.ascontiguousarray(disp_right)
 
         # I'm not sure why I need the following type ignore...
-        sample: st.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
+        sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
 
         torch_sample = ToTensor()(sample)
 
@@ -313,14 +313,14 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
 #         return sample
 
 
-class CenterCrop(st.TorchTransformer):
+class CenterCrop(ts.TorchTransformer):
     """
     """
 
     def __init__(self, scale: float):
         self.scale = scale
 
-    def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
+    def __call__(self, sample: ts.Sample_Torch) -> ts.Sample_Torch:
         height, width = sample['left'].size()[-2:]
         output_height = int(self.scale*height)
         output_width = int(self.scale*width)
@@ -330,7 +330,7 @@ class CenterCrop(st.TorchTransformer):
         return sample
 
 
-class ToTensor(st.NumpyToTorchTransformer):
+class ToTensor(ts.NumpyToTorchTransformer):
     """
     Converts the left, right, and disparity maps into FloatTensors.
     Left and right uint8 images get rescaled to [0,1] floats.
@@ -338,26 +338,26 @@ class ToTensor(st.NumpyToTorchTransformer):
     """
 
     @staticmethod
-    def __call__(sample: st.Sample_Numpy) -> st.Sample_Torch:
-        torch_sample: st.Sample_Torch = {}
+    def __call__(sample: ts.Sample_Numpy) -> ts.Sample_Torch:
+        torch_sample: ts.Sample_Torch = {}
         for name, image in sample.items():
             torch_sample[name] = T.functional.to_tensor(image)
         return torch_sample
 
 
-class PadSampleToBatch(st.TorchTransformer):
+class PadSampleToBatch(ts.TorchTransformer):
     """
     Unsqueezes the first dimension to be 1 when loading in single image pairs.
     """
 
     @staticmethod
-    def __call__(sample: st.Sample_Torch) -> st.Sample_Torch:
+    def __call__(sample: ts.Sample_Torch) -> ts.Sample_Torch:
         for name, image in sample.items():
             sample[name] = torch.unsqueeze(image, dim=0)
         return sample
 
 
-class Resize(st.TorchTransformer):
+class Resize(ts.TorchTransformer):
     """
     Resizes each of the images in a batch to a given height and width
     """
@@ -365,7 +365,7 @@ class Resize(st.TorchTransformer):
     def __init__(self, size: Tuple[int, int]) -> None:
         self.size = size
 
-    def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
+    def __call__(self, sample: ts.Sample_Torch) -> ts.Sample_Torch:
         for name, x in sample.items():
             sample[name] = T.functional.resize(x, self.size)
         return sample
@@ -387,13 +387,13 @@ class Resize(st.TorchTransformer):
 #         return sample
 
 
-class Rescale(st.TorchTransformer):
+class Rescale(ts.TorchTransformer):
     """
     Rescales the left and right image tensors (initially ranged between [0, 1]) and rescales them to be between [-1, 1].
     """
 
     @staticmethod
-    def __call__(sample: st.Sample_Torch) -> st.Sample_Torch:
+    def __call__(sample: ts.Sample_Torch) -> ts.Sample_Torch:
         for name in ['left', 'right']:
             sample[name] = (sample[name] - 0.5) * 2
         return sample
@@ -424,12 +424,12 @@ def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, 
     return fig
 
 
-def convert_transforms(transforms: List[ht.Transform]) -> List[st.TorchTransformer]:
+def convert_transforms(transforms: List[th.Transform]) -> List[ts.TorchTransformer]:
     _lookup = {
         'rescale': Rescale,
         'center_crop': CenterCrop,
     }
-    transforms_: List[st.TorchTransformer] = []
+    transforms_: List[ts.TorchTransformer] = []
     for transform in transforms:
         if hasattr(transform, 'properties'):
             t = _lookup[transform.name](**transform.properties)  # type: ignore
@@ -439,7 +439,7 @@ def convert_transforms(transforms: List[ht.Transform]) -> List[st.TorchTransform
     return transforms_
 
 
-def construct_sceneflow_dataset(cfg: ht.SceneflowProperties, is_training: bool) -> SceneflowDataset:
+def construct_sceneflow_dataset(cfg: th.SceneflowProperties, is_training: bool) -> SceneflowDataset:
     transforms = convert_transforms(cfg.transforms)
     dataset = SceneflowDataset(root_path=Path(cfg.root_path),
                                transforms=transforms,
@@ -449,7 +449,7 @@ def construct_sceneflow_dataset(cfg: ht.SceneflowProperties, is_training: bool) 
     return dataset
 
 
-def construct_keystone_dataset(cfg: ht.KeystoneDepthProperties, is_training: bool) -> KeystoneDataset:
+def construct_keystone_dataset(cfg: th.KeystoneDepthProperties, is_training: bool) -> KeystoneDataset:
     transforms = convert_transforms(cfg.transforms)
 
     root_path = Path(HydraConfig.get().runtime.cwd) / 'hydra_conf'
@@ -477,11 +477,11 @@ def construct_keystone_dataset(cfg: ht.KeystoneDepthProperties, is_training: boo
     return dataset
 
 
-def construct_dataloaders(data_cfg: List[ht.Data],
-                          loader_cfg: ht.Loader,
+def construct_dataloaders(data_cfg: List[th.Data],
+                          loader_cfg: th.Loader,
                           is_training: bool,
                           **kwargs: Any
-                          ) -> DataLoader[st.Sample_Torch]:
+                          ) -> DataLoader[ts.Sample_Torch]:
     for datum_cfg in data_cfg:
         if datum_cfg.name not in {'KeystoneDepth', 'Sceneflow'}:
             raise ValueError(f'Unknown dataset type {datum_cfg.name}')
@@ -495,7 +495,7 @@ def construct_dataloaders(data_cfg: List[ht.Data],
 
 
 @hydra.main(version_base=None, config_name="config")
-def main(cfg: ht.StereoNetConfig) -> int:
+def main(cfg: th.StereoNetConfig) -> int:
     global RNG
     RNG = np.random.default_rng(cfg.global_settings.random_seed)
     # _ = construct_dataloaders(data_cfg=cfg.validation.data, loader_cfg=cfg.loader, training=False)
