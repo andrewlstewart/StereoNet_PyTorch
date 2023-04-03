@@ -12,7 +12,8 @@ from collections import OrderedDict
 import torch
 from torch import nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import lightning.pytorch as pl
+from lightning.pytorch import loggers as pl_loggers
 
 import stereonet.stereonet_types as st
 import stereonet.utils as utils
@@ -163,7 +164,8 @@ class StereoNet(pl.LightningModule):
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
         if batch_idx == 0:
             fig = utils.plot_figure(left[0].detach().cpu(), right[0].detach().cpu(), disp_gt[0].detach().cpu(), disp_pred[0].detach().cpu())
-            self.logger.experiment.add_figure("generated_images", fig, self.current_epoch, close=True)
+            tensorboard: pl_loggers.TensorBoardLogger = self.logger
+            tensorboard.experiment.add_image("generated_images", fig, self.current_epoch, close=True)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """

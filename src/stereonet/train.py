@@ -46,6 +46,7 @@ def main(cfg: DictConfig) -> int:
 
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

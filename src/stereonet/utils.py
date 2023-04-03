@@ -4,13 +4,13 @@ Helper functions for StereoNet training.
 Includes a dataset object for the Scene Flow image and disparity dataset.
 """
 
-from typing import Optional, Tuple, List, Union, Set
+from typing import Optional, Tuple, List, Union, Set, Any
 from pathlib import Path
 import os
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from hydra.core.config_store import ConfigStore
 
 import numpy as np
 import numpy.typing as npt
@@ -23,7 +23,13 @@ os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2  # noqa: E402
 
 import stereonet.stereonet_types as st  # noqa: E402
+import stereonet.utils_hydra_typing as ht  # noqa: E402
 import stereonet.utils_io as utils_io  # noqa: E402
+
+
+CS = ConfigStore.instance()
+# Registering the Config class with the name 'config'.
+CS.store(name="config", node=ht.StereoNetConfig)
 
 
 RNG = np.random.default_rng()
@@ -170,7 +176,7 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
                 self.left_disp_path.append(disp_left)
                 self.right_disp_path.append(disp_right)
 
-        raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
+        # raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
 
     def __len__(self) -> int:
         return len(self.left_image_path)
@@ -198,7 +204,7 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
         return torch_sample
 
     @staticmethod
-    def get_paths(root_path: str, image_extensions: Set[str]) -> Tuple[List[Path], List[Path], List[Path], List[Path]]:
+    def get_paths(root_path: str, image_extensions: Set[str]) -> Tuple[List[str], List[str], List[str], List[str]]:
         """
         if shuffle is None, don't shuffle, else shuffle.
         """
@@ -418,23 +424,22 @@ def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, 
     return fig
 
 
-def convert_transforms(transforms: List[Union[str, DictConfig]]) -> st.TorchTransformers:
+def convert_transforms(transforms: List[ht.Transform]) -> List[st.TorchTransformer]:
     _lookup = {
         'rescale': Rescale,
         'center_crop': CenterCrop,
     }
-    transforms_ = []
+    transforms_: List[st.TorchTransformer] = []
     for transform in transforms:
-        if isinstance(transform, str):
-            transforms_.append(_lookup[transform]())
-        if isinstance(transform, DictConfig):
-            assert len(transform) == 1
-            key = next(iter(transform))
-            transforms_.append(_lookup[key](**transform[key]))
+        if hasattr(transform, 'properties'):
+            t = _lookup[transform.name](**transform.properties)  # type: ignore
+        else:
+            t = _lookup[transform.name]()
+        transforms_.append(t)
     return transforms_
 
 
-def construct_sceneflow_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
+def construct_sceneflow_dataset(cfg: ht.SceneflowProperties, is_training: bool) -> SceneflowDataset:
     transforms = convert_transforms(cfg.transforms)
     dataset = SceneflowDataset(root_path=Path(cfg.root_path),
                                transforms=transforms,
@@ -444,7 +449,7 @@ def construct_sceneflow_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
     return dataset
 
 
-def construct_keystone_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
+def construct_keystone_dataset(cfg: ht.KeystoneDepthProperties, is_training: bool) -> KeystoneDataset:
     transforms = convert_transforms(cfg.transforms)
 
     root_path = Path(HydraConfig.get().runtime.cwd) / 'hydra_conf'
@@ -472,24 +477,25 @@ def construct_keystone_dataset(cfg: DictConfig, is_training: bool) -> Dataset:
     return dataset
 
 
-def construct_dataloaders(data_cfg: DictConfig,
-                          loader_cfg: DictConfig,
+def construct_dataloaders(data_cfg: List[ht.Data],
+                          loader_cfg: ht.Loader,
                           is_training: bool,
-                          **kwargs) -> DataLoader:
+                          **kwargs: Any
+                          ) -> DataLoader[st.Sample_Torch]:
     for datum_cfg in data_cfg:
-        if datum_cfg.type not in {'KeystoneDepth', 'Sceneflow'}:
-            raise ValueError(f'Unknown dataset type {datum_cfg["type"]}')
+        if datum_cfg.name not in {'KeystoneDepth', 'Sceneflow'}:
+            raise ValueError(f'Unknown dataset type {datum_cfg.name}')
 
-        if datum_cfg.type == 'KeystoneDepth':
-            dataset = construct_keystone_dataset(datum_cfg, is_training)
-        if datum_cfg.type == 'Sceneflow':
-            dataset = construct_sceneflow_dataset(datum_cfg, is_training)
+        if datum_cfg.name == 'KeystoneDepth':
+            dataset = construct_keystone_dataset(datum_cfg.properties, is_training)  # type: ignore
+        if datum_cfg.name == 'Sceneflow':
+            dataset = construct_sceneflow_dataset(datum_cfg.properties, is_training)  # type: ignore
 
-    return torch.utils.data.DataLoader(dataset, batch_size=loader_cfg['batch_size'], **kwargs)
+    return DataLoader(dataset, batch_size=loader_cfg.batch_size, **kwargs)
 
 
-@hydra.main(version_base=None)
-def main(cfg: DictConfig) -> int:
+@hydra.main(version_base=None, config_name="config")
+def main(cfg: ht.StereoNetConfig) -> int:
     global RNG
     RNG = np.random.default_rng(cfg.global_settings.random_seed)
     # _ = construct_dataloaders(data_cfg=cfg.validation.data, loader_cfg=cfg.loader, training=False)
