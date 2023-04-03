@@ -282,11 +282,11 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
 #         resized_top = int(self.randomizer.random()*(output_h - self.output_size[0]))
 #         resized_left = int(self.randomizer.random()*(output_w - self.output_size[1]))
 
-#         for name, x in sample.items():  # pylint: disable=invalid-name
-#             x = T.functional.crop(x, top=top, left=left, height=scaled_h, width=scaled_w)  # pylint: disable=invalid-name
-#             x = T.functional.resize(x, size=(output_h, output_w))  # pylint: disable=invalid-name
-#             x = T.functional.crop(x, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])  # pylint: disable=invalid-name
-#             sample[name] = x
+#         for name, image in sample.items():
+#             image = T.functional.crop(image, top=top, left=left, height=scaled_h, width=scaled_w)
+#             image = T.functional.resize(image, size=(output_h, output_w))
+#             image = T.functional.crop(image, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])
+#             sample[name] = image
 #         return sample
 
 
@@ -307,9 +307,9 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
 #         resized_top = int(self.randomizer.random()*(height - output_height))
 #         resized_left = int(self.randomizer.random()*(width - output_width))
 
-#         for name, x in sample.items():  # pylint: disable=invalid-name
-#             x = T.functional.crop(x, top=resized_top, left=resized_left, height=output_height, width=output_width)  # pylint: disable=invalid-name
-#             sample[name] = x
+#         for name, image in sample.items():
+#             image = T.functional.crop(image, top=resized_top, left=resized_left, height=output_height, width=output_width)
+#             sample[name] = image
 #         return sample
 
 
@@ -325,8 +325,8 @@ class CenterCrop(st.TorchTransformer):
         output_height = int(self.scale*height)
         output_width = int(self.scale*width)
         cropper = T.CenterCrop((output_height, output_width))
-        for name, x in sample.items():  # pylint: disable=invalid-name
-            sample[name] = cropper(x)
+        for name, image in sample.items():
+            sample[name] = cropper(image)
         return sample
 
 
@@ -340,8 +340,8 @@ class ToTensor(st.NumpyToTorchTransformer):
     @staticmethod
     def __call__(sample: st.Sample_Numpy) -> st.Sample_Torch:
         torch_sample: st.Sample_Torch = {}
-        for name, x in sample.items():  # pylint: disable=invalid-name
-            torch_sample[name] = T.functional.to_tensor(x)
+        for name, image in sample.items():
+            torch_sample[name] = T.functional.to_tensor(image)
         return torch_sample
 
 
@@ -352,8 +352,8 @@ class PadSampleToBatch(st.TorchTransformer):
 
     @staticmethod
     def __call__(sample: st.Sample_Torch) -> st.Sample_Torch:
-        for name, x in sample.items():  # pylint: disable=invalid-name
-            sample[name] = torch.unsqueeze(x, dim=0)
+        for name, image in sample.items():
+            sample[name] = torch.unsqueeze(image, dim=0)
         return sample
 
 
@@ -382,8 +382,8 @@ class Resize(st.TorchTransformer):
 
 #     def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
 #         if self.randomizer.random() > self.prob:
-#             for name, x in sample.items():  # pylint: disable=invalid-name
-#                 sample[name] = T.functional.hflip(x)
+#             for name, image in sample.items():
+#                 sample[name] = T.functional.hflip(image)
 #         return sample
 
 

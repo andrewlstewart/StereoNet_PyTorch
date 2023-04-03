@@ -53,7 +53,7 @@ def get_disp_above_val(parent_path: Path, max_disp: float) -> float:
     return statistics.mean(mean_above_max_disp)
 
 
-def sceneflow_inference() -> None:  # pylint: disable=missing-function-docstring
+def sceneflow_inference() -> None:
     """
     Compute the EPE
     """
@@ -89,7 +89,7 @@ def sceneflow_inference() -> None:  # pylint: disable=missing-function-docstring
     print(f'Validation EPE: {loss_maxdisp/batch_idx}')
 
 
-def stereocam_inference() -> None:  # pylint: disable=missing-function-docstring
+def stereocam_inference() -> None:
     """
     Forward inference using an image captured on the StereoCam
     """
