@@ -1,6 +1,7 @@
 torch==2.0.0
 torchvision==0.15.1
 torchaudio==2.0.1
+tensorboard==2.12.1
 lightning==2.0.1
 scikit_image==0.20.0
 matplotlib==3.7.1
