@@ -1,5 +1,7 @@
 from typing import List, Optional
 
+from hydra.core.config_store import ConfigStore
+
 import stereonet.types_stereonet as ts
 
 from abc import ABC
@@ -116,3 +118,8 @@ class StereoNetConfig:
     loader: Loader
     training: Training
     validation: Validation
+
+
+CS = ConfigStore.instance()
+# Registering the Config class with the name 'config'.
+CS.store(name="config", node=StereoNetConfig)

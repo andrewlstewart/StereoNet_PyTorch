@@ -10,7 +10,6 @@ import os
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from hydra.core.config_store import ConfigStore
 
 import numpy as np
 import numpy.typing as npt
@@ -25,11 +24,6 @@ import stereonet.types_stereonet as ts  # noqa: E402
 import stereonet.types_hydra as th  # noqa: E402
 import stereonet.utils_io as utils_io  # noqa: E402
 import stereonet.transforms as st_transforms  # noqa: E402
-
-
-CS = ConfigStore.instance()
-# Registering the Config class with the name 'config'.
-CS.store(name="config", node=th.StereoNetConfig)
 
 
 RNG = np.random.default_rng()
