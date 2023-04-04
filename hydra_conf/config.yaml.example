@@ -12,6 +12,7 @@ logging:
   lightning_log_root: "./logging/${now:%Y-%m-%d}/${now:%H-%M-%S}"  # type=str, help="Root path to output logs files to"
 
 model:
+  _target_: stereonet.types_hydra.StereoNetModel
   k_downsampling_layers: 3
   k_refinement_layers: 3
   candidate_disparities: 256
@@ -23,33 +24,37 @@ training:
   min_epochs: 20  # type=int, help="Number of iterations of training over the full train dataset"
   max_epochs: 50  # type=int, help="Number of iterations of training over the full train dataset"
   optimizer:
-    RMSprop:
-      learning_rate: 2.54e-4  # type=float, help="Starting learning rate"
-      weight_decay: 0.0001
+    _target_: torch.optim.RMSprop
+    lr: 2.54e-4  # type=float, help="Starting learning rate"
+    weight_decay: 0.0001
   scheduler:
-    ExponentialLR:
-      gamma: 0.9
+    _target_: torch.optim.lr_scheduler.ExponentialLR
+    gamma: 0.9
   data:
-    # - type: Sceneflow
-    #   root_path: "E:\\SceneFlow"  # type=str, help='Path to the root of the Sceneflow depth files'
-    - type: KeystoneDepth
+    # - _target_: stereonet.types_hydra.SceneflowData
+    #   root_path: "E:\\Sceneflow"  # type=str, help='Path to the root of the Sceneflow depth files'
+    #   transforms:
+    #     - name: rescale
+    #     - name: center_crop
+    #       properties:
+    #         scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'
+    - _target_: stereonet.types_hydra.KeystoneDepthData
       root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
       split_ratio: 0.9  # type=float, help='Train:Test split ratio.'
       transforms:
-        - rescale
-        - center_crop:
-            scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'
+        - _target_: stereonet.transforms.Rescale
+        - _target_: stereonet.transforms.CenterCrop
+          scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'
   debug:
     enabled: False  # type=bool, help="Whether or not to use the following debugging flags"
     limit_train_batches: 10_000  # type=int, help="Debugging, how many batches to train on"
 
 validation:
   data:
-    # - type: Sceneflow
-    #   root_path: "E:\\SceneFlow"  # type=str, help='Path to the root of the Sceneflow depth files'
-    - type: KeystoneDepth
+    - _target_: stereonet.types_hydra.KeystoneDepthData
       root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
+      split_ratio: 0.9  # type=float, help='Train:Test split ratio.'
       transforms:
-        - rescale
-        - center_crop:
-            scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'
+        - _target_: stereonet.transforms.Rescale
+        - _target_: stereonet.transforms.CenterCrop
+          scale: 0.925  # type=float, help='Center crop percentage to decrease GPU memory'

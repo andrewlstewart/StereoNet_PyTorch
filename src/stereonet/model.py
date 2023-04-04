@@ -9,6 +9,8 @@ Loss function is the Robust Loss function (https://arxiv.org/abs/1701.03077)
 from typing import Tuple, List, Optional, Dict, Any
 from collections import OrderedDict
 
+import hydra.utils
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -32,7 +34,9 @@ class StereoNet(pl.LightningModule):
                  candidate_disparities: int = 256,
                  feature_extractor_filters: int = 32,
                  cost_volumizer_filters: int = 32,
-                 mask: bool = True) -> None:
+                 mask: bool = True,
+                 optimizer_config: Optional[torch.optim.Optimizer] = None,
+                 scheduler_config: Optional[torch.optim.lr_scheduler.LRScheduler] = None) -> None:
         super().__init__()
         self.save_hyperparameters()
 
@@ -56,6 +60,9 @@ class StereoNet(pl.LightningModule):
         self.refiners = nn.ModuleList()
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement())
+
+        self.optimizer_cfg = optimizer_config
+        self.scheduler_cfg = scheduler_config
 
     def forward_pyramid(self, sample: ts.Sample_Torch, side: str = 'left') -> List[torch.Tensor]:
         """
@@ -164,23 +171,30 @@ class StereoNet(pl.LightningModule):
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
         if batch_idx == 0:
             fig = utils.plot_figure(left[0].detach().cpu(), right[0].detach().cpu(), disp_gt[0].detach().cpu(), disp_pred[0].detach().cpu())
+            fig.canvas.draw()
+            data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            data = np.moveaxis(data, 2, 0)
+
             tensorboard: pl_loggers.TensorBoardLogger = self.logger
-            tensorboard.experiment.add_image("generated_images", fig, self.current_epoch, close=True)
+            tensorboard.experiment.add_image("generated_images", data, self.current_epoch)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """
         RMSProp optimizer + Exponentially decaying learning rate.
-
         Original authors trained with a batch size of 1 and a decaying learning rate.  If we randomly crop down the image
         to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
         image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
         """
-        optimizer = torch.optim.RMSprop(self.parameters(), lr=1e-3, weight_decay=0.0001)
-        lr_dict = {"scheduler": torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9, last_epoch=-1),
-                   "interval": "epoch",
-                   "frequency": 1,
-                   "name": "ExponentialDecayLR"}
-        config = {"optimizer": optimizer, "lr_scheduler": lr_dict}
+        config = {'optimizer': hydra.utils.instantiate(self.optimizer_cfg, params=self.parameters())}
+
+        if self.scheduler_cfg is not None:
+            lr_dict = {"scheduler": hydra.utils.instantiate(self.scheduler_cfg, optimizer=config['optimizer']),
+                       "interval": "epoch",
+                       "frequency": 1,
+                       "name": "ExponentialDecayLR"}
+            config.update({"lr_scheduler": lr_dict})
+
         return config
 
 

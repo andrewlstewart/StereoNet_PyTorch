@@ -1,6 +1,11 @@
-from typing import List, Union, Optional
+from typing import List, Optional
 
+import stereonet.types_stereonet as ts
+
+from abc import ABC
 from dataclasses import dataclass
+
+import torch.optim
 
 
 @dataclass
@@ -31,7 +36,17 @@ class Logging:
 
 
 @dataclass
-class Model:
+class Model(ABC):
+    ...
+
+
+@dataclass
+class CheckpointModel(Model):
+    model_checkpoint_path: str
+
+
+@dataclass
+class StereoNetModel(Model):
     k_downsampling_layers: int
     k_refinement_layers: int
     candidate_disparities: int
@@ -43,56 +58,32 @@ class Loader:
 
 
 @dataclass
-class RMSprop:
-    learning_rate: float
-    weight_decay: float
-
-
-@dataclass
-class Optimizer:
-    name: str
-    properties: Optional[RMSprop] = None
-
-
-@dataclass
-class ExponentialLR:
-    gamma: float
-
-
-@dataclass
-class Scheduler:
-    name: str
-    properties: Optional[ExponentialLR] = None
-
-
-@dataclass
-class CenterCropProperties:
-    scale: float
-
-
-@dataclass
-class Transform:
-    name: str
-    properties: Optional[CenterCropProperties] = None
-
-
-@dataclass
 class SceneflowProperties:
     root_path: str
-    transforms: List[Transform]
+    transforms: List[ts.TorchTransformer]
 
 
 @dataclass
 class KeystoneDepthProperties:
     root_path: str
     split_ratio: float
-    transforms: List[Transform]
+    transforms: List[ts.TorchTransformer]
 
 
 @dataclass
-class Data:
-    name: str
-    properties: Union[KeystoneDepthProperties, SceneflowProperties]
+class Data(ABC):
+    root_path: str
+    transforms: List[ts.TorchTransformer]
+
+
+@dataclass
+class SceneflowData(Data):
+    pass
+
+
+@dataclass
+class KeystoneDepthData(Data):
+    split_ratio: float
 
 
 @dataclass
@@ -105,15 +96,15 @@ class DataDebug:
 class Training:
     min_epochs: int
     max_epochs: int
-    optimier: Optimizer
-    scheduler: Scheduler
     data: List[Data]
     debug: DataDebug
+    optimizer: torch.optim.Optimizer
+    scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None
 
 
 @dataclass
 class Validation:
-    data: Data
+    data: List[Data]
 
 
 @dataclass

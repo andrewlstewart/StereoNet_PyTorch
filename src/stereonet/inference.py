@@ -17,6 +17,7 @@ import numpy as np
 from stereonet.model import StereoNet
 import stereonet.utils as utils
 from stereonet import types_stereonet as ts
+import stereonet.transforms as st_transforms
 
 
 def parse_test_args() -> argparse.Namespace:
@@ -66,7 +67,7 @@ def sceneflow_inference() -> None:
     model.to(device)
     model.eval()
 
-    val_transforms: List[ts.TorchTransformer] = [utils.Rescale()]
+    val_transforms: List[ts.TorchTransformer] = [st_transforms.Rescale()]
     val_dataset = utils.SceneflowDataset(args.sceneflow_root, string_include='TEST', transforms=val_transforms)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8, drop_last=False)
 
@@ -112,8 +113,8 @@ def stereocam_inference() -> None:
     # right_img = img[:, :2028, :]
 
     numpy_batch = {'left': left_img, 'right': right_img}
-    batch = utils.ToTensor()(numpy_batch)
-    tensor_transformers = [utils.Resize((640, 960)), utils.Rescale(), utils.PadSampleToBatch()]
+    batch = st_transforms.ToTensor()(numpy_batch)
+    tensor_transformers = [st_transforms.Resize((640, 960)), st_transforms.Rescale(), st_transforms.PadSampleToBatch()]
     for transformer in tensor_transformers:
         batch = transformer(batch)
 
