@@ -122,4 +122,4 @@ class StereoNetConfig:
 
 CS = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
-CS.store(name="config", node=StereoNetConfig)
+CS.store(name="stereonet_config", node=StereoNetConfig)
