@@ -17,7 +17,6 @@ import numpy.typing as npt
 import torch
 from torch.utils.data import Dataset, DataLoader
 from skimage import io
-import torchvision.transforms as T
 import matplotlib.pyplot as plt
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2  # noqa: E402
@@ -25,6 +24,7 @@ import cv2  # noqa: E402
 import stereonet.types_stereonet as ts  # noqa: E402
 import stereonet.types_hydra as th  # noqa: E402
 import stereonet.utils_io as utils_io  # noqa: E402
+import stereonet.transforms as st_transforms  # noqa: E402
 
 
 CS = ConfigStore.instance()
@@ -99,7 +99,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         # I'm not sure why I need the following type ignore...
         sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
 
-        torch_sample = ToTensor()(sample)
+        torch_sample = st_transforms.ToTensor()(sample)
 
         for transform in self.transforms:
             torch_sample = transform(torch_sample)
@@ -185,6 +185,10 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
         left = image_loader(os.path.join(self.root_path, self.left_image_path[index]))
         right = image_loader(os.path.join(self.root_path, self.right_image_path[index]))
 
+        if left.ndim < 3:
+            left = np.moveaxis(np.tile(left, (3, 1, 1)), 0, 2)  # Make greyscale into pseudo-RGB
+            right = np.moveaxis(np.tile(right, (3, 1, 1)), 0, 2)
+
         disp_left = cv2.imread(os.path.join(self.root_path, self.left_disp_path[index]), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
         # disp_left = disp_left[..., np.newaxis]
         disp_left = np.ascontiguousarray(disp_left)
@@ -193,10 +197,18 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
         # disp_right = disp_right[..., np.newaxis]
         disp_right = np.ascontiguousarray(disp_right)
 
+        min_height = min(left.shape[0], right.shape[0], disp_left.shape[0], disp_right.shape[0])
+        min_width = min(left.shape[1], right.shape[1], disp_left.shape[1], disp_right.shape[1])
+        cropper = st_transforms.CenterCrop(shape=(min_height, min_width))
+
         # I'm not sure why I need the following type ignore...
         sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
 
-        torch_sample = ToTensor()(sample)
+        torch_sample = st_transforms.ToTensor()(sample)
+
+        # Not sure if this is the best way to do this...
+        # Keystone dataset sizes between left/right/disp_left/disp_right are inconsistent
+        torch_sample = cropper(torch_sample)
 
         for transform in self.transforms:
             torch_sample = transform(torch_sample)
@@ -248,157 +260,6 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
         return (left_image_path, right_image_path, left_disp_path, right_disp_path)
 
 
-# class RandomResizedCrop(st.Transformer):
-#     """
-#     Randomly crops + resizes the left, right images and disparity map.  Applies the same random crop + resize to all 3 tensors.
-#     Note: Maintains aspect ratio, only weakly maintains that the scale is between the two provided values.
-#     """
-
-#     def __init__(self, output_size: Tuple[int, int], scale: Tuple[float, float], randomizer: np.random.Generator = np.random.default_rng()):
-#         self.output_size = output_size
-#         self.scale = scale
-#         self.randomizer = randomizer
-
-#     def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
-#         random_scale = self.randomizer.random() * (self.scale[1]-self.scale[0]) + self.scale[0]
-
-#         height, width = sample['left'].size()[-2:]
-#         scaled_h, scaled_w = int(height*random_scale), int(width*random_scale)
-
-#         top = int(self.randomizer.random()*(height - scaled_h))
-#         left = int(self.randomizer.random()*(width - scaled_w))
-
-#         larger_length = self.output_size[0]/scaled_h if (self.output_size[0]*scaled_h) > (self.output_size[1]*scaled_w) else self.output_size[1]/scaled_w
-#         output_h, output_w = int(larger_length*scaled_h), int(larger_length*scaled_w)
-
-#         if np.isclose(output_h, self.output_size[0], rtol=0.01):
-#             output_h = self.output_size[0]
-#         if np.isclose(output_w, self.output_size[1], rtol=0.01):
-#             output_w = self.output_size[1]
-
-#         if output_h < self.output_size[0] or output_w < self.output_size[1]:
-#             raise SizeRequestedIsLargerThanImage()
-
-#         resized_top = int(self.randomizer.random()*(output_h - self.output_size[0]))
-#         resized_left = int(self.randomizer.random()*(output_w - self.output_size[1]))
-
-#         for name, image in sample.items():
-#             image = T.functional.crop(image, top=top, left=left, height=scaled_h, width=scaled_w)
-#             image = T.functional.resize(image, size=(output_h, output_w))
-#             image = T.functional.crop(image, top=resized_top, left=resized_left, height=self.output_size[0], width=self.output_size[1])
-#             sample[name] = image
-#         return sample
-
-
-# class RandomCrop(st.Transformer):
-#     """
-#     """
-
-#     def __init__(self, scale: float, randomizer: np.random.Generator = np.random.default_rng()):
-#         self.scale = scale
-#         self.randomizer = randomizer
-
-#     def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
-#         height, width = sample['left'].size()[-2:]
-
-#         output_height = int(self.scale*height)
-#         output_width = int(self.scale*width)
-
-#         resized_top = int(self.randomizer.random()*(height - output_height))
-#         resized_left = int(self.randomizer.random()*(width - output_width))
-
-#         for name, image in sample.items():
-#             image = T.functional.crop(image, top=resized_top, left=resized_left, height=output_height, width=output_width)
-#             sample[name] = image
-#         return sample
-
-
-class CenterCrop(ts.TorchTransformer):
-    """
-    """
-
-    def __init__(self, scale: float):
-        self.scale = scale
-
-    def __call__(self, sample: ts.Sample_Torch) -> ts.Sample_Torch:
-        height, width = sample['left'].size()[-2:]
-        output_height = int(self.scale*height)
-        output_width = int(self.scale*width)
-        cropper = T.CenterCrop((output_height, output_width))
-        for name, image in sample.items():
-            sample[name] = cropper(image)
-        return sample
-
-
-class ToTensor(ts.NumpyToTorchTransformer):
-    """
-    Converts the left, right, and disparity maps into FloatTensors.
-    Left and right uint8 images get rescaled to [0,1] floats.
-    Disparities are already floats and just get turned into tensors.
-    """
-
-    @staticmethod
-    def __call__(sample: ts.Sample_Numpy) -> ts.Sample_Torch:
-        torch_sample: ts.Sample_Torch = {}
-        for name, image in sample.items():
-            torch_sample[name] = T.functional.to_tensor(image)
-        return torch_sample
-
-
-class PadSampleToBatch(ts.TorchTransformer):
-    """
-    Unsqueezes the first dimension to be 1 when loading in single image pairs.
-    """
-
-    @staticmethod
-    def __call__(sample: ts.Sample_Torch) -> ts.Sample_Torch:
-        for name, image in sample.items():
-            sample[name] = torch.unsqueeze(image, dim=0)
-        return sample
-
-
-class Resize(ts.TorchTransformer):
-    """
-    Resizes each of the images in a batch to a given height and width
-    """
-
-    def __init__(self, size: Tuple[int, int]) -> None:
-        self.size = size
-
-    def __call__(self, sample: ts.Sample_Torch) -> ts.Sample_Torch:
-        for name, x in sample.items():
-            sample[name] = T.functional.resize(x, self.size)
-        return sample
-
-
-# class RandomHorizontalFlip(st.Transformer):
-#     """
-#     Randomly flip all 3 tensors at the same time.
-#     """
-
-#     def __init__(self, flip_probability: float, randomizer: np.random.Generator = np.random.default_rng()):
-#         self.prob = flip_probability
-#         self.randomizer = randomizer
-
-#     def __call__(self, sample: st.Sample_Torch) -> st.Sample_Torch:
-#         if self.randomizer.random() > self.prob:
-#             for name, image in sample.items():
-#                 sample[name] = T.functional.hflip(image)
-#         return sample
-
-
-class Rescale(ts.TorchTransformer):
-    """
-    Rescales the left and right image tensors (initially ranged between [0, 1]) and rescales them to be between [-1, 1].
-    """
-
-    @staticmethod
-    def __call__(sample: ts.Sample_Torch) -> ts.Sample_Torch:
-        for name in ['left', 'right']:
-            sample[name] = (sample[name] - 0.5) * 2
-        return sample
-
-
 def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, disp_pred: torch.Tensor) -> plt.figure:
     """
     Helper function to plot the left/right image pair from the dataset (ie. normalized between -1/+1 and c,h,w) and the
@@ -424,34 +285,16 @@ def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, 
     return fig
 
 
-def convert_transforms(transforms: List[th.Transform]) -> List[ts.TorchTransformer]:
-    _lookup = {
-        'rescale': Rescale,
-        'center_crop': CenterCrop,
-    }
-    transforms_: List[ts.TorchTransformer] = []
-    for transform in transforms:
-        if hasattr(transform, 'properties'):
-            t = _lookup[transform.name](**transform.properties)  # type: ignore
-        else:
-            t = _lookup[transform.name]()
-        transforms_.append(t)
-    return transforms_
-
-
-def construct_sceneflow_dataset(cfg: th.SceneflowProperties, is_training: bool) -> SceneflowDataset:
-    transforms = convert_transforms(cfg.transforms)
+def construct_sceneflow_dataset(cfg: th.SceneflowData, is_training: bool) -> SceneflowDataset:
     dataset = SceneflowDataset(root_path=Path(cfg.root_path),
-                               transforms=transforms,
+                               transforms=cfg.transforms,
                                string_exclude='TEST' if is_training else None,
                                string_include=None if is_training else 'TEST',
                                )
     return dataset
 
 
-def construct_keystone_dataset(cfg: th.KeystoneDepthProperties, is_training: bool) -> KeystoneDataset:
-    transforms = convert_transforms(cfg.transforms)
-
+def construct_keystone_dataset(cfg: th.KeystoneDepthData, is_training: bool) -> KeystoneDataset:
     root_path = Path(HydraConfig.get().runtime.cwd) / 'hydra_conf'
 
     training_paths = root_path / 'training_paths.txt'
@@ -472,24 +315,21 @@ def construct_keystone_dataset(cfg: th.KeystoneDepthProperties, is_training: boo
 
     dataset = KeystoneDataset(root_path=cfg.root_path,
                               image_paths=str(training_paths) if is_training else str(validation_paths),
-                              transforms=transforms,
+                              transforms=cfg.transforms,
                               )
     return dataset
 
 
-def construct_dataloaders(data_cfg: List[th.Data],
+def construct_dataloaders(data_config: List[th.Data],
                           loader_cfg: th.Loader,
                           is_training: bool,
                           **kwargs: Any
                           ) -> DataLoader[ts.Sample_Torch]:
-    for datum_cfg in data_cfg:
-        if datum_cfg.name not in {'KeystoneDepth', 'Sceneflow'}:
-            raise ValueError(f'Unknown dataset type {datum_cfg.name}')
-
-        if datum_cfg.name == 'KeystoneDepth':
-            dataset = construct_keystone_dataset(datum_cfg.properties, is_training)  # type: ignore
-        if datum_cfg.name == 'Sceneflow':
-            dataset = construct_sceneflow_dataset(datum_cfg.properties, is_training)  # type: ignore
+    for datum_config in data_config:
+        if isinstance(datum_config, th.KeystoneDepthData):
+            dataset: Dataset[ts.Sample_Torch] = construct_keystone_dataset(datum_config, is_training)
+        elif isinstance(datum_config, th.SceneflowData):
+            dataset = construct_sceneflow_dataset(datum_config, is_training)
 
     return DataLoader(dataset, batch_size=loader_cfg.batch_size, **kwargs)
 
@@ -499,12 +339,11 @@ def main(cfg: th.StereoNetConfig) -> int:
     global RNG
     RNG = np.random.default_rng(cfg.global_settings.random_seed)
     # _ = construct_dataloaders(data_cfg=cfg.validation.data, loader_cfg=cfg.loader, training=False)
-    dataloader = construct_dataloaders(data_cfg=cfg.training.data,
-                                       loader_cfg=cfg.loader,
-                                       is_training=True,
-                                       shuffle=True, num_workers=8, drop_last=False)
-    for ex in dataloader:
-        break
+    data_config = [hydra.utils.instantiate(config) for config in cfg.training.data]
+    _ = construct_dataloaders(data_config=data_config,
+                              loader_cfg=cfg.loader,
+                              is_training=True,
+                              shuffle=True, num_workers=1, drop_last=False)
     return 0
 
 
