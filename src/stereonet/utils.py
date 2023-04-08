@@ -15,15 +15,15 @@ import numpy as np
 import numpy.typing as npt
 import torch
 from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
 from skimage import io
 import matplotlib.pyplot as plt
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2  # noqa: E402
 
-import stereonet.types_stereonet as ts  # noqa: E402
-import stereonet.types_hydra as th  # noqa: E402
+import stereonet.types as stt  # noqa: E402
 import stereonet.utils_io as utils_io  # noqa: E402
-import stereonet.transforms as st_transforms  # noqa: E402
+# import stereonet.transforms as st_transforms  # noqa: E402
 
 
 RNG = np.random.default_rng()
@@ -58,7 +58,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
 
     def __init__(self,
                  root_path: Path,
-                 transforms: ts.TorchTransformers,
+                 transforms: Optional[List[torch.nn.Module]],
                  string_exclude: Optional[str] = None,
                  string_include: Optional[str] = None
                  ):
@@ -66,19 +66,14 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         self.string_exclude = string_exclude
         self.string_include = string_include
 
-        if not isinstance(transforms, list):
-            _transforms = [transforms]
-        else:
-            _transforms = transforms
+        self.transforms = transforms
 
-        self.transforms = _transforms
-
-        self.left_image_path, self.right_image_path, self.left_disp_path, self.right_disp_path = self.get_paths()
+        self.left_image_path, self.right_image_path, self.left_disp_path, self.right_disp_path = self.get_paths(self.root_path, self.string_include, self.string_exclude)
 
     def __len__(self) -> int:
         return len(self.left_image_path)
 
-    def __getitem__(self, index: int) -> ts.Sample_Torch:
+    def __getitem__(self, index: int) -> torch.Tensor:
         left = image_loader(self.left_image_path[index])
         right = image_loader(self.right_image_path[index])
 
@@ -90,17 +85,23 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         disp_right = disp_right[..., np.newaxis]
         disp_right = np.ascontiguousarray(disp_right)
 
-        # I'm not sure why I need the following type ignore...
-        sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
+        assert left.dtype == np.uint8
+        assert right.dtype == np.uint8
+        assert disp_left.dtype != np.uint8
+        assert disp_right.dtype != np.uint8
 
-        torch_sample = st_transforms.ToTensor()(sample)
+        # ToTensor works differently for dtypes, for uint8 it scales to [0,1], for float32 it does not scale
+        tensorer = transforms.ToTensor()
+        stack = torch.concatenate(list(map(tensorer, (left, right, disp_left, disp_right))), dim=0)  # C, H, W
 
-        for transform in self.transforms:
-            torch_sample = transform(torch_sample)
+        if self.transforms is not None:
+            for transform in self.transforms:
+                stack = transform(stack)
 
-        return torch_sample
+        return stack
 
-    def get_paths(self) -> Tuple[List[Path], List[Path], List[Path], List[Path]]:
+    @staticmethod
+    def get_paths(root_path: Path, string_include: Optional[str] = None, string_exclude: Optional[str] = None) -> Tuple[List[Path], List[Path], List[Path], List[Path]]:
         """
         string_exclude: If this string appears in the parent path of an image, don't add them to the dataset (ie. 'TEST' will exclude any path with 'TEST' in Path.parts)
         string_include: If this string DOES NOT appear in the parent path of an image, don't add them to the dataset (ie. 'TEST' will require 'TEST' to be in the Path.parts)
@@ -114,13 +115,13 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
 
         # For each left image, do some path manipulation to find the corresponding right
         # image and left disparity.
-        for path in self.root_path.rglob('*.png'):
+        for path in root_path.rglob('*.png'):
             if 'left' not in path.parts:
                 continue
 
-            if self.string_exclude and self.string_exclude in path.parts:
+            if string_exclude and string_exclude in path.parts:
                 continue
-            if self.string_include and self.string_include not in path.parts:
+            if string_include and string_include not in path.parts:
                 continue
 
             r_path = Path("\\".join(['right' if 'left' in part else part for part in path.parts]))
@@ -148,18 +149,13 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
     def __init__(self,
                  root_path: str,
                  image_paths: str,
-                 transforms: ts.TorchTransformers,
+                 transforms: Optional[List[torch.nn.Module]],
+                 max_size: Optional[List[int]] = None,
                  ):
 
         self.root_path = root_path
 
-        if not isinstance(transforms, list):
-            _transforms = [transforms]
-        else:
-            _transforms = transforms
-        self.transforms = _transforms
-
-        self._image_extensions = {'.png'}
+        self.transforms = transforms
 
         self.left_image_path, self.right_image_path, self.left_disp_path, self.right_disp_path = [], [], [], []
         with open(image_paths, 'r') as f:
@@ -170,44 +166,55 @@ class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why th
                 self.left_disp_path.append(disp_left)
                 self.right_disp_path.append(disp_right)
 
-        # raise NotImplementedError("KeystoneDataset is not implemented yet, png's and exr files have very different shapes.")
+        self.max_size = max_size
 
     def __len__(self) -> int:
         return len(self.left_image_path)
 
-    def __getitem__(self, index: int) -> ts.Sample_Torch:
+    def __getitem__(self, index: int) -> torch.Tensor:
         left = image_loader(os.path.join(self.root_path, self.left_image_path[index]))
         right = image_loader(os.path.join(self.root_path, self.right_image_path[index]))
 
-        if left.ndim < 3:
-            left = np.moveaxis(np.tile(left, (3, 1, 1)), 0, 2)  # Make greyscale into pseudo-RGB
-            right = np.moveaxis(np.tile(right, (3, 1, 1)), 0, 2)
-
-        disp_left = cv2.imread(os.path.join(self.root_path, self.left_disp_path[index]), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        disp_left = cv2.imread(os.path.join(self.root_path, self.left_disp_path[index]), cv2.IMREAD_ANYDEPTH)
         # disp_left = disp_left[..., np.newaxis]
         disp_left = np.ascontiguousarray(disp_left)
 
-        disp_right = cv2.imread(os.path.join(self.root_path, self.right_disp_path[index]), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        disp_right = cv2.imread(os.path.join(self.root_path, self.right_disp_path[index]), cv2.IMREAD_ANYDEPTH)
         # disp_right = disp_right[..., np.newaxis]
         disp_right = np.ascontiguousarray(disp_right)
 
+        assert left.dtype == np.uint8
+        assert right.dtype == np.uint8
+        assert disp_left.dtype != np.uint8
+        assert disp_right.dtype != np.uint8
+
         min_height = min(left.shape[0], right.shape[0], disp_left.shape[0], disp_right.shape[0])
         min_width = min(left.shape[1], right.shape[1], disp_left.shape[1], disp_right.shape[1])
-        cropper = st_transforms.CenterCrop(shape=(min_height, min_width))
 
-        # I'm not sure why I need the following type ignore...
-        sample: ts.Sample_Numpy = {'left': left, 'right': right, 'disp_left': disp_left, 'disp_right': disp_right}  # type: ignore[assignment]
-
-        torch_sample = st_transforms.ToTensor()(sample)
+        # ToTensor works differently for dtypes, for uint8 it scales to [0,1], for float32 it does not scale
+        tensorer = transforms.ToTensor()
+        tensored = list(map(tensorer, (left, right, disp_left, disp_right)))
 
         # Not sure if this is the best way to do this...
         # Keystone dataset sizes between left/right/disp_left/disp_right are inconsistent
-        torch_sample = cropper(torch_sample)
+        cropper = transforms.CenterCrop((min_height, min_width))
+        stack = torch.concatenate(list(map(cropper, tensored)), dim=0)  # C, H, W
 
-        for transform in self.transforms:
-            torch_sample = transform(torch_sample)
+        if self.transforms is not None:
+            for transform in self.transforms:
+                stack = transform(stack)
 
-        return torch_sample
+        height, width = stack.size()[-2:]
+
+        # preserve aspect ratio
+        if self.max_size and (height > self.max_size[0] or width > self.max_size[1]):
+            original_aspect_ratio = width / height
+            new_height = int(min(self.max_size[0], self.max_size[0] / original_aspect_ratio))
+            new_width = int(min(self.max_size[1], original_aspect_ratio * self.max_size[1]))
+            resizer = transforms.Resize(size=(new_height, new_width), antialias=True)
+            stack = resizer(stack)
+
+        return stack
 
     @staticmethod
     def get_paths(root_path: str, image_extensions: Set[str]) -> Tuple[List[str], List[str], List[str], List[str]]:
@@ -279,7 +286,7 @@ def plot_figure(left: torch.Tensor, right: torch.Tensor, disp_gt: torch.Tensor, 
     return fig
 
 
-def construct_sceneflow_dataset(cfg: th.SceneflowData, is_training: bool) -> SceneflowDataset:
+def construct_sceneflow_dataset(cfg: stt.SceneflowData, is_training: bool) -> SceneflowDataset:
     dataset = SceneflowDataset(root_path=Path(cfg.root_path),
                                transforms=cfg.transforms,
                                string_exclude='TEST' if is_training else None,
@@ -288,7 +295,7 @@ def construct_sceneflow_dataset(cfg: th.SceneflowData, is_training: bool) -> Sce
     return dataset
 
 
-def construct_keystone_dataset(cfg: th.KeystoneDepthData, is_training: bool) -> KeystoneDataset:
+def construct_keystone_dataset(cfg: stt.KeystoneDepthData, is_training: bool) -> KeystoneDataset:
     root_path = Path(HydraConfig.get().runtime.cwd) / 'hydra_conf'
 
     training_paths = root_path / 'training_paths.txt'
@@ -310,34 +317,42 @@ def construct_keystone_dataset(cfg: th.KeystoneDepthData, is_training: bool) -> 
     dataset = KeystoneDataset(root_path=cfg.root_path,
                               image_paths=str(training_paths) if is_training else str(validation_paths),
                               transforms=cfg.transforms,
+                              max_size=cfg.max_size
                               )
     return dataset
 
 
-def construct_dataloaders(data_config: List[th.Data],
-                          loader_cfg: th.Loader,
+def construct_dataloaders(data_config: Union[stt.Training, stt.Validation],
                           is_training: bool,
                           **kwargs: Any
-                          ) -> DataLoader[ts.Sample_Torch]:
-    for datum_config in data_config:
-        if isinstance(datum_config, th.KeystoneDepthData):
-            dataset: Dataset[ts.Sample_Torch] = construct_keystone_dataset(datum_config, is_training)
-        elif isinstance(datum_config, th.SceneflowData):
+                          ) -> DataLoader[torch.Tensor]:
+    for datum_config in data_config.data:
+        if isinstance(datum_config, stt.KeystoneDepthData):
+            dataset: Dataset[torch.Tensor] = construct_keystone_dataset(datum_config, is_training)
+        elif isinstance(datum_config, stt.SceneflowData):
             dataset = construct_sceneflow_dataset(datum_config, is_training)
 
-    return DataLoader(dataset, batch_size=loader_cfg.batch_size, **kwargs)
+    return DataLoader(dataset, batch_size=data_config.loader.batch_size, **kwargs)
 
 
 @hydra.main(version_base=None, config_name="config")
-def main(cfg: th.StereoNetConfig) -> int:
+def main(cfg: stt.StereoNetConfig) -> int:
+    config: stt.StereoNetConfig = hydra.utils.instantiate(cfg, _convert_="all")['stereonet_config']
+
     global RNG
-    RNG = np.random.default_rng(cfg.global_settings.random_seed)
+    RNG = np.random.default_rng(config.global_settings.random_seed)
     # _ = construct_dataloaders(data_cfg=cfg.validation.data, loader_cfg=cfg.loader, training=False)
-    data_config = [hydra.utils.instantiate(config) for config in cfg.training.data]
-    _ = construct_dataloaders(data_config=data_config,
-                              loader_cfg=cfg.loader,
-                              is_training=True,
-                              shuffle=True, num_workers=1, drop_last=False)
+    # data_config = [hydra.utils.instantiate(config) for config in cfg.training.data]
+    if not config.training:
+        raise ValueError("Training config must be specified.")
+    loader = construct_dataloaders(data_config=config.training,
+                                   is_training=True,
+                                   shuffle=True,
+                                   num_workers=1,
+                                   drop_last=False)
+    for _ in loader.dataset:
+        break
+
     return 0
 
 
