@@ -34,8 +34,8 @@ class StereoNet(pl.LightningModule):
                  feature_extractor_filters: int = 32,
                  cost_volumizer_filters: int = 32,
                  mask: bool = True,
-                 optimizer: Optional[Callable[[torch.nn.Module], torch.optim.Optimizer]] = None,
-                 scheduler: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None) -> None:
+                 optimizer_partial: Optional[Callable[[torch.nn.Module], torch.optim.Optimizer]] = None,
+                 scheduler_partial: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None) -> None:
         super().__init__()
         self.save_hyperparameters()
 
@@ -61,8 +61,8 @@ class StereoNet(pl.LightningModule):
         for _ in range(self.k_refinement_layers):
             self.refiners.append(Refinement(in_channels=in_channels+1))
 
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.optimizer_partial = optimizer_partial
+        self.scheduler_partial = scheduler_partial
 
     def forward_pyramid(self, sample: torch.Tensor, side: str = 'left') -> List[torch.Tensor]:
         """
@@ -99,14 +99,14 @@ class StereoNet(pl.LightningModule):
 
         return disparity_pyramid
 
-    def forward(self, batch: torch.Tensor) -> torch.Tensor:  # type: ignore[override] # pylint: disable=arguments-differ
+    def forward(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
         """
         disparities = self.forward_pyramid(batch, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch: torch.Tensor, _) -> torch.Tensor:  # type: ignore[override, no-untyped-def] # pylint: disable=arguments-differ
+    def training_step(self, batch: torch.Tensor, _: int) -> torch.Tensor:
         """
         Compute the disparities for both the left and right volumes then compute the loss for each.  Finally take the mean between the two losses and
         return that as the final loss.
@@ -151,7 +151,7 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left[-1]), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
-    def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
+    def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         """
         Compute the L1 loss (End-point-error) over the validation set for the left disparity map.
 
@@ -163,7 +163,10 @@ class StereoNet(pl.LightningModule):
         loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
         if batch_idx == 0:
-            fig = utils.plot_figure(batch[0, 0, ...].detach().cpu(), batch[0, 1, ...].detach().cpu(), batch[0, 2, ...].detach().cpu(), disp_pred[0].detach().cpu())
+            fig = utils.plot_figure(batch[0, :self.in_channels, ...].detach().cpu(),
+                                    batch[0, self.in_channels:self.in_channels*2, ...].detach().cpu(),
+                                    batch[0, -2:-1, ...].detach().cpu(),
+                                    disp_pred[0].detach().cpu())
             fig.canvas.draw()
             data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
@@ -179,16 +182,19 @@ class StereoNet(pl.LightningModule):
         to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
         image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
         """
-        if self.optimizer is None:
+        if self.optimizer_partial is None:
             raise Exception("Need to provide optimizer arguments.")
-        config = {'optimizer': self.optimizer(self.parameters())}
 
-        if self.scheduler is not None:
-            lr_dict = {"scheduler": self.scheduler(config['optimizer']),
+        optimizer = self.optimizer_partial(self.parameters())
+        config: Dict[str, Any] = {'optimizer': optimizer}
+
+        if self.scheduler_partial is not None:
+            scheduler = self.scheduler_partial(optimizer)
+            lr_dict = {"scheduler": scheduler,
                        "interval": "epoch",
                        "frequency": 1,
                        "name": "ExponentialDecayLR"}
-            config.update({"lr_scheduler": lr_dict})
+            config["lr_scheduler"] = lr_dict
 
         return config
 

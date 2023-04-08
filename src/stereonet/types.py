@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Any, Callable
 
 from abc import ABC
 from dataclasses import dataclass
@@ -68,12 +68,12 @@ class Data(ABC):
 
 
 class SceneflowData(Data):
-    def __init__(self, *args: Any, **kwargs: Dict[Any, Any]):
+    def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
 
 
 class KeystoneDepthData(Data):
-    def __init__(self, split_ratio: float, *args: Any, **kwargs: Dict[Any, Any]):
+    def __init__(self, split_ratio: float, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.split_ratio = split_ratio
 
@@ -91,8 +91,8 @@ class Training:
     data: List[Data]
     loader: Loader
     debug: DataDebug
-    optimizer: Callable[[torch.nn.Module], torch.optim.Optimizer]
-    scheduler: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None
+    optimizer_partial: Callable[[torch.nn.Module], torch.optim.Optimizer]
+    scheduler_partial: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None
     fast_dev_run: bool = False
 
 

@@ -29,8 +29,8 @@ def main(cfg: stt.StereoNetConfig) -> int:
                           k_refinement_layers=config.model.k_refinement_layers,
                           candidate_disparities=config.model.candidate_disparities,
                           mask=False,
-                          optimizer=config.training.optimizer,
-                          scheduler=config.training.scheduler)
+                          optimizer_partial=config.training.optimizer_partial,
+                          scheduler_partial=config.training.scheduler_partial)
 
     # # Get datasets
     train_loader = utils.construct_dataloaders(data_config=config.training,
@@ -42,6 +42,9 @@ def main(cfg: stt.StereoNetConfig) -> int:
         val_loader = utils.construct_dataloaders(data_config=config.validation,
                                                  is_training=False,
                                                  shuffle=False, num_workers=8, drop_last=False)
+    # for batch in train_loader:
+    #     model.validation_step(batch, 0)
+    #     break
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss_epoch', save_top_k=-1, mode='min')
 

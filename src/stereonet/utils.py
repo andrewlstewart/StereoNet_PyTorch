@@ -29,12 +29,20 @@ import stereonet.utils_io as utils_io  # noqa: E402
 RNG = np.random.default_rng()
 
 
-def image_loader(path: Union[Path, str]) -> npt.NDArray[np.uint8]:  # pylint: disable=missing-function-docstring
+def image_loader(path: Union[Path, str]) -> npt.NDArray[np.uint8]:
+    """
+    Load an image from a path using skimage.io and return a np.uint8 numpy array.
+    """
     img: npt.NDArray[np.uint8] = io.imread(path)
     return img
 
 
-def pfm_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:  # pylint: disable=missing-function-docstring
+def pfm_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
+    """
+    Load in a PFM formated file and return a image/disparity using the Freiburg groups method.
+    Only used to load in disparity maps and not regular grayscale or colour images.
+    Return a tuple of the image/disparity and the scale.
+    """
     pfm: Tuple[npt.NDArray[np.float32], float] = utils_io.readPFM(path)
     return pfm
 
@@ -45,7 +53,7 @@ class SizeRequestedIsLargerThanImage(Exception):
     """
 
 
-class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why this typing ignore is needed on the class level...
+class SceneflowDataset(Dataset[torch.Tensor]):
     """
     Sceneflow dataset composed of FlyingThings3D, Driving, and Monkaa
     https://lmb.informatik.uni-freiburg.de/resources/datasets/SceneFlowDatasets.en.html
@@ -141,7 +149,7 @@ class SceneflowDataset(Dataset):  # type: ignore[type-arg]  # I don't know why t
         return (left_image_path, right_image_path, left_disp_path, right_disp_path)
 
 
-class KeystoneDataset(Dataset):  # type: ignore[type-arg]  # I don't know why this typing ignore is needed on the class level...
+class KeystoneDataset(Dataset[torch.Tensor]):
     """
     https://keystonedepth.cs.washington.edu/download
     """
@@ -350,7 +358,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
                                    shuffle=True,
                                    num_workers=1,
                                    drop_last=False)
-    for _ in loader.dataset:
+    for _ in loader:
         break
 
     return 0
