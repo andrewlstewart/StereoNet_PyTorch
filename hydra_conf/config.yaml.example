@@ -23,10 +23,9 @@ stereonet_config:
     k_refinement_layers: 3
     candidate_disparities: 256
 
-
   training:
     _target_: stereonet.types.Training
-    fast_dev_run: true  # type=bool, help="Whether or not to run a fast dev run of the training loop"
+    fast_dev_run: false  # type=bool, help="Whether or not to run a fast dev run of the training loop"
     min_epochs: 20  # type=int, help="Number of iterations of training over the full train dataset"
     max_epochs: 50  # type=int, help="Number of iterations of training over the full train dataset"
     optimizer:
@@ -65,15 +64,15 @@ stereonet_config:
       enabled: False  # type=bool, help="Whether or not to use the following debugging flags"
       limit_train_batches: 10_000  # type=int, help="Debugging, how many batches to train on"
 
-  # validation:
-  #   _target_: stereonet.types.Validation
-  #   loader:
-  #     _target_: stereonet.types.Loader
-  #     batch_size: 1  # type=int, help='Number of examples for data loading.'
-  #   data:
-  #     - _target_: stereonet.types_hydra.KeystoneDepthData
-  #       root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
-  #       split_ratio: 0.9  # type=float, help='Train:Test split ratio.'
-  #       max_size:
-  #         - 650
-  #         - 650
+  validation:
+    _target_: stereonet.types.Validation
+    loader:
+      _target_: stereonet.types.Loader
+      batch_size: 1  # type=int, help='Number of examples for data loading.'
+    data:
+      - _target_: stereonet.types.KeystoneDepthData
+        root_path: "E:\\Keystone\\projects\\grail\\slowglass\\2-BBox\\annotation_results"  # type=str, help='Path to the root of the Keystone depth files'
+        split_ratio: 0.9  # type=float, help='Train:Test split ratio.'
+        max_size:
+          - 650
+          - 650
