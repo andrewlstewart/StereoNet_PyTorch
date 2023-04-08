@@ -13,30 +13,23 @@ How to perform the most basic inference:
 import numpy as np
 import torch
 from stereonet.model import StereoNet
-from stereonet import utils as utils
+import stereonet.utils_io
 
-# Load in the image pair as numpy uint8 arrays
-# sample = {'left': utils.image_loader(path_to_left_rgb_image_file),
-#           'right': utils.image_loader(path_to_right_rgb_image_file)
-#           }
+# Load in the image pair as numpy uint8 arrays, ensure the shapes are the same for both images for concatenation [Height, Width, Channels]
+# left = stereonet.utils_io.image_loader(path_to_left_rgb_image_file)
+# right = stereonet.utils_io.image_loader(path_to_left_rgb_image_file)
+# tensorer = transforms.ToTensor()
+# tensored = list(map(tensorer, (left, right)))
+# stack = torch.concatenate(tensored, dim=0)  # [Batch, Stacked left/right channels, Height, Width]
 
 # Here just creating a random image
-rng = np.random.default_rng()
-sample = {'left': (rng.random((540, 960, 3))*255).astype(np.uint8),  # [height, width, channel],
-          'right': (rng.random((540, 960, 3))*255).astype(np.uint8)  # [height, width, channel]
-          }
-
-# Transform the single image pair into a torch.Tensor then into a
-# batch of shape [batch, channel, height, width]
-transformers = [utils.ToTensor(), utils.PadSampleToBatch()]
-for transformer in transformers:
-    sample = transformer(sample)
+stack = torch.randint(0, 256, size=(1, 6, 540, 960), dtype=torch.float32)  # [Batch, Stacked left/right channels, Height, Width]
 
 # Load in the model from the trained checkpoint
 # model = StereoNet.load_from_checkpoint(path_to_checkpoint)
 
 # Here just instantiate the model with random weights
-model = StereoNet()
+model = StereoNet(in_channels=3)  # 3 channels for RGB
 
 # Set the model to eval and run the forward method without tracking gradients
 model.eval()
@@ -44,16 +37,16 @@ with torch.no_grad():
     batched_prediction = model(sample)
 
 # Remove the batch diemnsion and switch back to channels last notation
-single_prediction = batched_prediction[0].numpy()  # [batch, ...] -> [...]
+single_prediction = batched_prediction[0].detach().cpu().numpy()  # [batch, channel, height, width] -> [channel, height, width]
 single_prediction = np.moveaxis(single_prediction, 0, 2)  # [channel, height, width] -> [height, width, channel]
 
-single_prediction.shape
->>> (540, 960, 1)
+assert (single_prediction.shape) == (540, 960, 1)
 ```
 
 ## Weights
 Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
 
+* Model was trained on RGB images and has in_channels=3
 * Max disparity parameter during training = 256 with the mask applied
 * 3 downsampling (1/8 resolution) and 3 refinement layers
 * Validation EPE of 3.93 for all pixels (including >256).
@@ -64,7 +57,7 @@ Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are decent.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
+Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
 
 Epoch 20:
 

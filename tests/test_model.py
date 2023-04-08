@@ -21,7 +21,7 @@ def test_forward_sizes(models: List[Tuple[StereoNet, int]]):
     """
     Test to see if each of the networks produces the correct shape.
     """
-    input_data = {'left': torch.rand((2, 3, 540, 960)), 'right': torch.rand((2, 3, 540, 960))}
+    input_data = torch.rand((2, 6, 540, 960))
 
     with torch.no_grad():
         for model, _ in models:

@@ -6,10 +6,9 @@ StereoNet model is decomposed into a feature extractor, cost volume creation, an
 Loss function is the Robust Loss function (https://arxiv.org/abs/1701.03077)
 """
 
-from typing import Tuple, List, Optional, Dict, Any
+from typing import Tuple, List, Optional, Dict, Any, Callable
 from collections import OrderedDict
 
-import hydra.utils
 import numpy as np
 import torch
 from torch import nn
@@ -17,7 +16,6 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 from lightning.pytorch import loggers as pl_loggers
 
-import stereonet.types_stereonet as ts
 import stereonet.utils as utils
 
 
@@ -29,17 +27,19 @@ class StereoNet(pl.LightningModule):
     Trained with RMSProp + Exponentially decaying learning rate scheduler.
     """
 
-    def __init__(self, k_downsampling_layers: int = 3,
+    def __init__(self, in_channels: int,
+                 k_downsampling_layers: int = 3,
                  k_refinement_layers: int = 3,
                  candidate_disparities: int = 256,
                  feature_extractor_filters: int = 32,
                  cost_volumizer_filters: int = 32,
                  mask: bool = True,
-                 optimizer_config: Optional[torch.optim.Optimizer] = None,
-                 scheduler_config: Optional[torch.optim.lr_scheduler.LRScheduler] = None) -> None:
+                 optimizer_partial: Optional[Callable[[torch.nn.Module], torch.optim.Optimizer]] = None,
+                 scheduler_partial: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None) -> None:
         super().__init__()
         self.save_hyperparameters()
 
+        self.in_channels = in_channels
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
         self.candidate_disparities = candidate_disparities
@@ -51,7 +51,7 @@ class StereoNet(pl.LightningModule):
         self._max_downsampled_disps = (candidate_disparities+1) // (2**k_downsampling_layers)
 
         # Feature network
-        self.feature_extractor = FeatureExtractor(in_channels=3, out_channels=self.feature_extractor_filters, k_downsampling_layers=self.k_downsampling_layers)
+        self.feature_extractor = FeatureExtractor(in_channels=in_channels, out_channels=self.feature_extractor_filters, k_downsampling_layers=self.k_downsampling_layers)
 
         # Cost volume
         self.cost_volumizer = CostVolume(in_channels=self.feature_extractor_filters, out_channels=self.cost_volumizer_filters, max_downsampled_disps=self._max_downsampled_disps)
@@ -59,26 +59,28 @@ class StereoNet(pl.LightningModule):
         # Hierarchical Refinement: Edge-Aware Upsampling
         self.refiners = nn.ModuleList()
         for _ in range(self.k_refinement_layers):
-            self.refiners.append(Refinement())
+            self.refiners.append(Refinement(in_channels=in_channels+1))
 
-        self.optimizer_cfg = optimizer_config
-        self.scheduler_cfg = scheduler_config
+        self.optimizer_partial = optimizer_partial
+        self.scheduler_partial = scheduler_partial
 
-    def forward_pyramid(self, sample: ts.Sample_Torch, side: str = 'left') -> List[torch.Tensor]:
+    def forward_pyramid(self, sample: torch.Tensor, side: str = 'left') -> List[torch.Tensor]:
         """
-        This is the heart of the forward pass.  Given a Dictionary keyed with 'left' and 'right' tensors, perform the feature extraction, cost volume estimation, cascading
+        This is the heart of the forward pass.  Given a torch.Tensor of shape [Batch, left/right, Height, Width], perform the feature extraction, cost volume estimation, cascading
         refiners to return a list of the disparities.  First entry of the returned list is the lowest resolution while the last is the full resolution disparity.
+
+        For clarity, the zeroth element of the first dimension is the left image and the first element of the first dimension is the right image.
 
         The idea with reference/shifting is that when computing the cost volume, one image is effectively held stationary while the other image
         sweeps across.  If the provided tuple (x) is (left/right) stereo pair with the argument side='left', then the stationary image will be the left
         image and the sweeping image will be the right image and vice versa.
         """
         if side == 'left':
-            reference = sample['left']
-            shifting = sample['right']
+            reference = sample[:, :self.in_channels, ...]
+            shifting = sample[:, self.in_channels:self.in_channels*2, ...]
         elif side == 'right':
-            reference = sample['right']
-            shifting = sample['left']
+            reference = sample[:, self.in_channels:self.in_channels*2, ...]
+            shifting = sample[:, :self.in_channels, ...]
 
         reference_embedding = self.feature_extractor(reference)
         shifting_embedding = self.feature_extractor(shifting)
@@ -97,34 +99,30 @@ class StereoNet(pl.LightningModule):
 
         return disparity_pyramid
 
-    def forward(self, sample: ts.Sample_Torch) -> torch.Tensor:  # type: ignore[override] # pylint: disable=arguments-differ
+    def forward(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Do the forward pass using forward_pyramid (for the left disparity map) and return only the full resolution map.
         """
-        disparities = self.forward_pyramid(sample, side='left')
+        disparities = self.forward_pyramid(batch, side='left')
         return disparities[-1]  # Ultimately, only output the last refined disparity
 
-    def training_step(self, batch: ts.Sample_Torch, _) -> torch.Tensor:  # type: ignore[override, no-untyped-def] # pylint: disable=arguments-differ
+    def training_step(self, batch: torch.Tensor, _: int) -> torch.Tensor:
         """
         Compute the disparities for both the left and right volumes then compute the loss for each.  Finally take the mean between the two losses and
         return that as the final loss.
 
         Log at each step the Robust Loss and log the L1 loss (End-point-error) at each epoch.
         """
-        left = batch['left']
-        right = batch['right']
-        disp_gt_left = batch['disp_left']
-        disp_gt_right = batch['disp_right']
 
-        sample = {'left': left, 'right': right}
+        height, width = batch.size()[-2:]
 
-        # Non-uniform because the sizes of each of the list entries aren't the same
-        disp_pred_left_nonuniform = self.forward_pyramid(sample, side='left')
-        disp_pred_right_nonuniform = self.forward_pyramid(sample, side='right')
+        # Non-uniform because the sizes of each of the list entries returned from the forward_pyramid aren't the same
+        disp_pred_left_nonuniform = self.forward_pyramid(batch, side='left')
+        disp_pred_right_nonuniform = self.forward_pyramid(batch, side='right')
 
         for idx, (disparity_left, disparity_right) in enumerate(zip(disp_pred_left_nonuniform, disp_pred_right_nonuniform)):
-            disp_pred_left_nonuniform[idx] = F.interpolate(disparity_left, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
-            disp_pred_right_nonuniform[idx] = F.interpolate(disparity_right, [left.size()[2], left.size()[3]], mode='bilinear', align_corners=True)
+            disp_pred_left_nonuniform[idx] = F.interpolate(disparity_left, [height, width], mode='bilinear', align_corners=True)
+            disp_pred_right_nonuniform[idx] = F.interpolate(disparity_right, [height, width], mode='bilinear', align_corners=True)
 
         disp_pred_left = torch.stack(disp_pred_left_nonuniform, dim=0)
         disp_pred_right = torch.stack(disp_pred_right_nonuniform, dim=0)
@@ -134,8 +132,8 @@ class StereoNet(pl.LightningModule):
                 matching_size = [disp_pred_left.size()[0], 1, 1, 1, 1]
             return tensor.tile(matching_size)
 
-        disp_gt_left = _tiler(disp_gt_left)
-        disp_gt_right = _tiler(disp_gt_right)
+        disp_gt_left = _tiler(batch[:, -2, ...])
+        disp_gt_right = _tiler(batch[:, -1, ...])
 
         if self.mask:
             left_mask = (disp_gt_left < self.candidate_disparities).detach()
@@ -153,24 +151,22 @@ class StereoNet(pl.LightningModule):
         self.log("train_loss_epoch", F.l1_loss(disp_pred_left[-1], disp_gt_left[-1]), on_step=False, on_epoch=True, prog_bar=False, logger=True)
         return loss
 
-    def validation_step(self, batch: ts.Sample_Torch, batch_idx: int) -> None:  # type: ignore[override] # pylint: disable=arguments-differ
+    def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         """
         Compute the L1 loss (End-point-error) over the validation set for the left disparity map.
 
         Log a figure of the left/right RGB images and the grount truth disparity + predicted disparity to the logger.
         """
-        left = batch['left']
-        right = batch['right']
-        disp_gt = batch['disp_left']
-
-        sample = {'left': left, 'right': right}
-
-        disp_pred = self(sample)
+        disp_pred = self(batch[:, :self.in_channels*2, ...])
+        disp_gt = batch[:, self.in_channels*2+1, ...]
 
         loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)
         if batch_idx == 0:
-            fig = utils.plot_figure(left[0].detach().cpu(), right[0].detach().cpu(), disp_gt[0].detach().cpu(), disp_pred[0].detach().cpu())
+            fig = utils.plot_figure(batch[0, :self.in_channels, ...].detach().cpu(),
+                                    batch[0, self.in_channels:self.in_channels*2, ...].detach().cpu(),
+                                    batch[0, -2:-1, ...].detach().cpu(),
+                                    disp_pred[0].detach().cpu())
             fig.canvas.draw()
             data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
             data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
@@ -186,14 +182,19 @@ class StereoNet(pl.LightningModule):
         to, lets say, a rescale factor of 2, 1/2 width 1/2 height, (total reduction of 2**2) then each epoch will only train on 1/4 the number of
         image patches.  Therefore, to keep the learning rate similar, delay the decay by the square of the rescale factor.
         """
-        config = {'optimizer': hydra.utils.instantiate(self.optimizer_cfg, params=self.parameters())}
+        if self.optimizer_partial is None:
+            raise Exception("Need to provide optimizer arguments.")
 
-        if self.scheduler_cfg is not None:
-            lr_dict = {"scheduler": hydra.utils.instantiate(self.scheduler_cfg, optimizer=config['optimizer']),
+        optimizer = self.optimizer_partial(self.parameters())
+        config: Dict[str, Any] = {'optimizer': optimizer}
+
+        if self.scheduler_partial is not None:
+            scheduler = self.scheduler_partial(optimizer)
+            lr_dict = {"scheduler": scheduler,
                        "interval": "epoch",
                        "frequency": 1,
                        "name": "ExponentialDecayLR"}
-            config.update({"lr_scheduler": lr_dict})
+            config["lr_scheduler"] = lr_dict
 
         return config
 
@@ -295,14 +296,14 @@ class Refinement(torch.nn.Module):
     Several of these classes will be instantiated to perform the *cascading* refinement.  Refer to the original paper for a full discussion.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, in_channels: int = 3) -> None:
         super().__init__()
 
         dilations = [1, 2, 4, 8, 1, 1]
 
         net: OrderedDict[str, nn.Module] = OrderedDict()
 
-        net['segment_0_conv_0'] = nn.Conv2d(in_channels=4, out_channels=32, kernel_size=3, padding=1)
+        net['segment_0_conv_0'] = nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)
 
         for block_idx, dilation in enumerate(dilations):
             net[f'segment_1_res_{block_idx}'] = ResBlock(in_channels=32, out_channels=32, kernel_size=3, padding=dilation, dilation=dilation)
@@ -377,7 +378,7 @@ def soft_argmin(cost: torch.Tensor, max_downsampled_disps: int) -> torch.Tensor:
     return disp
 
 
-def robust_loss(x: torch.Tensor, alpha: ts.Number, c: ts.Number) -> torch.Tensor:  # pylint: disable=invalid-name
+def robust_loss(x: torch.Tensor, alpha: float, c: float) -> torch.Tensor:  # pylint: disable=invalid-name
     """
     A General and Adaptive Robust Loss Function (https://arxiv.org/abs/1701.03077)
     """
