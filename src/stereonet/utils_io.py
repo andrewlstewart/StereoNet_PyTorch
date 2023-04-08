@@ -1,8 +1,4 @@
 """
-
-This script was entirely written by the the Freiburg group
-https://lmb.informatik.uni-freiburg.de/resources/datasets/IO.py
-
 """
 
 from typing import Tuple, Union
@@ -11,10 +7,14 @@ import re
 
 import numpy as np
 import numpy.typing as npt
+from skimage import io
 
 
-def readPFM(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
+def PFM_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
     """
+    This function was entirely written by the the Freiburg group
+    https://lmb.informatik.uni-freiburg.de/resources/datasets/IO.py
+
     Read in a PFM formated file and return a image/disparity
     """
     with open(path, 'rb') as file:
@@ -45,3 +45,11 @@ def readPFM(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
     data = np.reshape(data, shape)
     data = np.flipud(data)
     return data, scale
+
+
+def image_loader(path: Union[Path, str]) -> npt.NDArray[np.uint8]:
+    """
+    Load an image from a path using skimage.io and return a np.uint8 numpy array.
+    """
+    img: npt.NDArray[np.uint8] = io.imread(path)
+    return img

@@ -1,5 +1,5 @@
 """
-Script to instantiate a StereoNet model + train on the SceneFlow dataset.
+Script to instantiate a StereoNet model + train on the SceneFlow or KeystoneDepth dataset.
 """
 
 import hydra
@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import LearningRateMonitor
 
 from stereonet.model import StereoNet
-import stereonet.utils as utils
+import stereonet.datasets as std
 import stereonet.types as stt
 
 
@@ -33,18 +33,15 @@ def main(cfg: stt.StereoNetConfig) -> int:
                           scheduler_partial=config.training.scheduler_partial)
 
     # # Get datasets
-    train_loader = utils.construct_dataloaders(data_config=config.training,
-                                               is_training=True,
-                                               shuffle=True, num_workers=8, drop_last=False)
+    train_loader = std.construct_dataloaders(data_config=config.training,
+                                             is_training=True,
+                                             shuffle=True, num_workers=8, drop_last=False)
 
     val_loader = None
     if config.validation is not None:
-        val_loader = utils.construct_dataloaders(data_config=config.validation,
-                                                 is_training=False,
-                                                 shuffle=False, num_workers=8, drop_last=False)
-    # for batch in train_loader:
-    #     model.validation_step(batch, 0)
-    #     break
+        val_loader = std.construct_dataloaders(data_config=config.validation,
+                                               is_training=False,
+                                               shuffle=False, num_workers=8, drop_last=False)
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss_epoch', save_top_k=-1, mode='min')
 
