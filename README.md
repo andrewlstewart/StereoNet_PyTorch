@@ -40,13 +40,13 @@ with torch.no_grad():
 single_prediction = batched_prediction[0].detach().cpu().numpy()  # [batch, channel, height, width] -> [channel, height, width]
 single_prediction = np.moveaxis(single_prediction, 0, 2)  # [channel, height, width] -> [height, width, channel]
 
-single_prediction.shape
->>> (540, 960, 1)
+assert (single_prediction.shape) == (540, 960, 1)
 ```
 
 ## Weights
 Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
 
+* Model was trained on RGB images and has in_channels=3
 * Max disparity parameter during training = 256 with the mask applied
 * 3 downsampling (1/8 resolution) and 3 refinement layers
 * Validation EPE of 3.93 for all pixels (including >256).
@@ -57,7 +57,7 @@ Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Currently training, early results are decent.  Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
+Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
 
 Epoch 20:
 
