@@ -28,7 +28,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
                           k_downsampling_layers=config.model.k_downsampling_layers,
                           k_refinement_layers=config.model.k_refinement_layers,
                           candidate_disparities=config.model.candidate_disparities,
-                          mask=False,
+                          mask=config.training.mask,
                           optimizer_partial=config.training.optimizer_partial,
                           scheduler_partial=config.training.scheduler_partial)
 

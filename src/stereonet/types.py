@@ -88,6 +88,7 @@ class DataDebug:
 class Training:
     min_epochs: int
     max_epochs: int
+    mask: bool
     data: List[Data]
     loader: Loader
     debug: DataDebug
@@ -104,7 +105,6 @@ class Validation:
 
 @dataclass
 class StereoNetConfig:
-    # hydra: Hydra
     global_settings: GlobalSettings
     logging: Logging
     model: Model
