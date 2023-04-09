@@ -21,7 +21,7 @@ import stereonet.utils as utils
 
 class StereoNet(pl.LightningModule):
     """
-    StereoNet model.  During training, takes in a Dictionary keyed with 'left', 'right', 'disp_left', and 'disp_right' with torch.Tensor values [b, c, h, w].
+    StereoNet model.  During training, takes in a torch.Tensor dimensions [batch, left/right/disp_left/disp_right channels, height, width].
     At inference, (ie. calling the forward method), only the predicted left disparity is returned.
 
     Trained with RMSProp + Exponentially decaying learning rate scheduler.
