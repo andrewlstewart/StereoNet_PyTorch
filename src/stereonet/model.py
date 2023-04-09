@@ -43,7 +43,7 @@ class StereoNet(pl.LightningModule):
         self.k_downsampling_layers = k_downsampling_layers
         self.k_refinement_layers = k_refinement_layers
         self.candidate_disparities = candidate_disparities
-        self.mask = mask  # TODO: Implement in loss function
+        self.mask = mask
 
         self.feature_extractor_filters = feature_extractor_filters
         self.cost_volumizer_filters = cost_volumizer_filters
