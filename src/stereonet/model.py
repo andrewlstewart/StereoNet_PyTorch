@@ -158,7 +158,7 @@ class StereoNet(pl.LightningModule):
         Log a figure of the left/right RGB images and the grount truth disparity + predicted disparity to the logger.
         """
         disp_pred = self(batch[:, :self.in_channels*2, ...])
-        disp_gt = batch[:, self.in_channels*2+1, ...]
+        disp_gt = batch[:, self.in_channels*2:self.in_channels*2+1, ...]
 
         loss = F.l1_loss(disp_pred, disp_gt)
         self.log("val_loss_epoch", loss, on_epoch=True, logger=True)

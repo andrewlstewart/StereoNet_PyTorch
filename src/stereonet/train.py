@@ -20,6 +20,9 @@ def main(cfg: stt.StereoNetConfig) -> int:
     if config.training is None:
         raise Exception("Need to provide training arguments to train the model.")
 
+    if config.training.random_seed is not None:
+        pl.seed_everything(config.training.random_seed)
+
     # Instantiate model with built in optimizer
     if isinstance(config.model, stt.CheckpointModel):
         model = StereoNet.load_from_checkpoint(config.model.model_checkpoint_path)
@@ -54,7 +57,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
                          logger=logger,
                          callbacks=[lr_monitor, checkpoint_callback])
 
-    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, deterministic=config.training.deterministic)
 
     return 0
 
