@@ -6,8 +6,6 @@ stereonet_config:
   _target_: stereonet.types.StereoNetConfig
   global_settings:
     _target_: stereonet.types.GlobalSettings
-    random_seed: null  # type=Optional[int], help="Seed to set the torch random generator for reproducible training runs"
-    deterministic: null  # type=bool, help="Whether or not to set the PyTorch Lightning Trainer to deterministic mode"
     devices:
       _target_: stereonet.types.Devices
       num: 1  # type=int, help="Number of devices to use during training"
@@ -27,6 +25,8 @@ stereonet_config:
   training:
     _target_: stereonet.types.Training
     fast_dev_run: false  # type=bool, help="Whether or not to run a fast dev run of the training loop"
+    random_seed: null  # type=Optional[int], help="Seed to set the torch random generator for reproducible training runs"
+    deterministic: null  # type=bool, help="Whether or not to set the PyTorch Lightning Trainer to deterministic mode"
     mask: true  # type=bool, help="Whether or not to compute the loss for disparities larger than the model's max_disparities"
     min_epochs: 20  # type=int, help="Number of iterations of training over the full train dataset"
     max_epochs: 50  # type=int, help="Number of iterations of training over the full train dataset"

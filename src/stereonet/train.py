@@ -55,9 +55,10 @@ def main(cfg: stt.StereoNetConfig) -> int:
                          min_epochs=config.training.min_epochs,
                          max_epochs=config.training.max_epochs,
                          logger=logger,
-                         callbacks=[lr_monitor, checkpoint_callback])
+                         callbacks=[lr_monitor, checkpoint_callback],
+                         deterministic=config.training.deterministic)
 
-    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, deterministic=config.training.deterministic)
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
     return 0
 
