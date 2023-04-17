@@ -44,7 +44,9 @@ assert (single_prediction.shape) == (540, 960, 1)
 ```
 
 ## Weights
-Model checkpoint can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
+Model checkpoint trained on Sceneflow dataset can be downloaded here: https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
+
+Model corresponds to this commit: 9c0260f270547d8001e9d637cf3a94658f805bae
 
 * Model was trained on RGB images and has in_channels=3
 * Max disparity parameter during training = 256 with the mask applied

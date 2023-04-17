@@ -144,4 +144,3 @@ data/
 hydra_conf/config.yaml
 hydra_conf/training_paths.txt
 hydra_conf/validation_paths.txt
-hydra_conf/validation_paths.txt
