@@ -2,6 +2,8 @@
 Script to instantiate a StereoNet model + train on the SceneFlow or KeystoneDepth dataset.
 """
 
+from typing import Optional
+
 import hydra
 
 import lightning.pytorch as pl
@@ -23,9 +25,11 @@ def main(cfg: stt.StereoNetConfig) -> int:
     if config.training.random_seed is not None:
         pl.seed_everything(config.training.random_seed)
 
+    checkpoint_path: Optional[str] = None
     # Instantiate model with built in optimizer
     if isinstance(config.model, stt.CheckpointModel):
-        model = StereoNet.load_from_checkpoint(config.model.model_checkpoint_path)
+        checkpoint_path = config.model.model_checkpoint_path
+        model = StereoNet.load_from_checkpoint(checkpoint_path)
     elif isinstance(config.model, stt.StereoNetModel):
         model = StereoNet(in_channels=config.model.in_channels,
                           k_downsampling_layers=config.model.k_downsampling_layers,
@@ -34,6 +38,8 @@ def main(cfg: stt.StereoNetConfig) -> int:
                           mask=config.training.mask,
                           optimizer_partial=config.training.optimizer_partial,
                           scheduler_partial=config.training.scheduler_partial)
+    else:
+        raise Exception("Unknown model type")
 
     # # Get datasets
     train_loader = std.construct_dataloaders(data_config=config.training,
@@ -58,7 +64,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
                          callbacks=[lr_monitor, checkpoint_callback],
                          deterministic=config.training.deterministic)
 
-    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader, ckpt_path=checkpoint_path)
 
     return 0
 
