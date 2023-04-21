@@ -87,12 +87,12 @@ class DataDebug:
 class Training:
     min_epochs: int
     max_epochs: int
-    mask: bool
     data: List[Data]
     loader: Loader
     debug: DataDebug
     optimizer_partial: Callable[[torch.nn.Module], torch.optim.Optimizer]
     scheduler_partial: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None
+    mask: Optional[float] = None
     random_seed: Optional[int] = None
     deterministic: Optional[bool] = None
     fast_dev_run: bool = False

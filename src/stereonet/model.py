@@ -33,7 +33,7 @@ class StereoNet(pl.LightningModule):
                  candidate_disparities: int = 256,
                  feature_extractor_filters: int = 32,
                  cost_volumizer_filters: int = 32,
-                 mask: bool = True,
+                 mask: Optional[float] = None,
                  optimizer_partial: Optional[Callable[[torch.nn.Module], torch.optim.Optimizer]] = None,
                  scheduler_partial: Optional[Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler]] = None) -> None:
         super().__init__()
@@ -135,9 +135,9 @@ class StereoNet(pl.LightningModule):
         disp_gt_left = _tiler(batch[:, -2, ...])
         disp_gt_right = _tiler(batch[:, -1, ...])
 
-        if self.mask:
-            left_mask = (disp_gt_left < self.candidate_disparities).detach()
-            right_mask = (disp_gt_right < self.candidate_disparities).detach()
+        if self.mask is not None:
+            left_mask = (disp_gt_left < self.mask).detach()
+            right_mask = (disp_gt_right < self.mask).detach()
 
             loss_left = torch.mean(robust_loss(disp_gt_left[left_mask] - disp_pred_left[left_mask], alpha=1, c=2))
             loss_right = torch.mean(robust_loss(disp_gt_right[right_mask] - disp_pred_right[right_mask], alpha=1, c=2))
