@@ -289,28 +289,16 @@ def construct_dataloaders(data_config: Union[stt.Training, stt.Validation],
     return DataLoader(dataset, batch_size=data_config.loader.batch_size, **kwargs)
 
 
-def get_normalization_values(dataloader: DataLoader[torch.Tensor]) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Get the min/max values and mean/std values for each channel in the training dataset.
-    """
-    mins: List[torch.Tensor] = []
-    maxs: List[torch.Tensor] = []
-    means: List[torch.Tensor] = []
-    squared_means: List[torch.Tensor] = []
-
+def get_normalization_values(dataloader: DataLoader[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    means, sq_means = [], []
     for data in dataloader:
-        mins.append(data.min(0)[0].min(1)[0].min(1)[0])
-        maxs.append(data.max(0)[0].max(1)[0].max(1)[0])
         means.append(data.mean(dim=(0, 2, 3)))
-        squared_means.append((data**2).mean(dim=(0, 2, 3)))
+        sq_means.append((data**2).mean(dim=(0, 2, 3)))
 
-    all_mins = torch.vstack(mins).min(dim=0)[0]
-    all_maxs = torch.vstack(maxs).max(dim=0)[0]
+    mean = torch.vstack(means).mean(dim=0)
+    std = torch.sqrt(torch.vstack(sq_means).mean(dim=0) - mean**2)
 
-    all_mean = torch.vstack(means).mean(dim=0)
-    all_std = torch.sqrt(torch.vstack(squared_means).mean(dim=0) - all_mean**2)
-
-    return (all_mins, all_maxs), (all_mean, all_std)
+    return mean, std
 
 
 @hydra.main(version_base=None, config_name="config")
@@ -324,10 +312,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
     train_loader = construct_dataloaders(data_config=config.training,
                                          is_training=True,
                                          shuffle=False, num_workers=8, drop_last=False)
-    (mins, maxs), (mean, std) = get_normalization_values(train_loader)
-
-    print(f"{mins=}")
-    print(f"{maxs=}")
+    mean, std = get_normalization_values(train_loader)
 
     print(f"{mean=}")
     print(f"{std=}")
