@@ -16,6 +16,8 @@ stereonet_config:
     lightning_log_root: "./logging/${now:%Y-%m-%d}/${now:%H-%M-%S}"  # type=str, help="Root path to output logs files to"
 
   model:
+    # _target_: stereonet.types.CheckpointModel
+    # model_checkpoint_path: "E:\\StereoNet_PyTorch_Refactor\\logging\\2023-04-10\\10-31-22\\lightning_logs\\version_0\\checkpoints\\epoch=25-step=822978.ckpt"
     _target_: stereonet.types.StereoNetModel
     in_channels: 1
     k_downsampling_layers: 3
@@ -28,8 +30,8 @@ stereonet_config:
     random_seed: null  # type=Optional[int], help="Seed to set the torch random generator for reproducible training runs"
     deterministic: null  # type=bool, help="Whether or not to set the PyTorch Lightning Trainer to deterministic mode"
     mask: true  # type=bool, help="Whether or not to compute the loss for disparities larger than the model's max_disparities"
-    min_epochs: 20  # type=int, help="Number of iterations of training over the full train dataset"
-    max_epochs: 50  # type=int, help="Number of iterations of training over the full train dataset"
+    min_epochs: 15  # type=int, help="Number of iterations of training over the full train dataset"
+    max_epochs: 25  # type=int, help="Number of iterations of training over the full train dataset"
     optimizer_partial:
       _target_: torch.optim.RMSprop
       _partial_: true
@@ -56,11 +58,18 @@ stereonet_config:
         max_size:
           - 625
           - 625
-        # transforms:
-        #   - _target_: torchvision.transforms.CenterCrop
-        #     size: 
-        #       - 500
-        #       - 500
+        transforms:
+          - _target_: torchvision.transforms.Normalize
+            mean:
+              - 111.5684
+              - 113.6528
+              - 4.3221
+              - 4.2296 
+            std:
+              - 61.9625
+              - 62.0313
+              - 10.8142
+              - 9.9528
     debug:
       _target_: stereonet.types.DataDebug
       enabled: False  # type=bool, help="Whether or not to use the following debugging flags"
@@ -78,3 +87,15 @@ stereonet_config:
         max_size:
           - 625
           - 625
+        transforms:
+          - _target_: torchvision.transforms.Normalize
+            mean:
+              - 111.5684
+              - 113.6528
+              - 4.3221
+              - 4.2296 
+            std:
+              - 61.9625
+              - 62.0313
+              - 10.8142
+              - 9.9528

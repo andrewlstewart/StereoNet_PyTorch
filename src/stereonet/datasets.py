@@ -5,6 +5,7 @@ from typing import Optional, List, Set, Tuple, Union, Any
 from pathlib import Path
 import os
 
+import hydra
 from hydra.core.hydra_config import HydraConfig
 import numpy as np
 import torch
@@ -33,7 +34,7 @@ class SceneflowDataset(Dataset[torch.Tensor]):
 
     def __init__(self,
                  root_path: Path,
-                 transforms: Optional[List[torch.nn.Module]],
+                 transforms: Optional[List[torch.nn.Module]] = None,
                  string_exclude: Optional[str] = None,
                  string_include: Optional[str] = None
                  ):
@@ -124,7 +125,7 @@ class KeystoneDataset(Dataset[torch.Tensor]):
     def __init__(self,
                  root_path: str,
                  image_paths: str,
-                 transforms: Optional[List[torch.nn.Module]],
+                 transforms: Optional[List[torch.nn.Module]] = None,
                  max_size: Optional[List[int]] = None,
                  ):
 
@@ -167,8 +168,11 @@ class KeystoneDataset(Dataset[torch.Tensor]):
         min_width = min(left.shape[1], right.shape[1], disp_left.shape[1], disp_right.shape[1])
 
         # ToTensor works differently for dtypes, for uint8 it scales to [0,1], for float32 it does not scale
+        # Therefore, 'unscale' the uint8 images to [0,255] so normalization using the later transforms work
         tensorer = transforms.ToTensor()
         tensored = list(map(tensorer, (left, right, disp_left, disp_right)))
+        tensored[0] *= 255
+        tensored[1] *= 255
 
         # Not sure if this is the best way to do this...
         # Keystone dataset sizes between left/right/disp_left/disp_right are inconsistent
@@ -283,3 +287,38 @@ def construct_dataloaders(data_config: Union[stt.Training, stt.Validation],
             dataset = construct_sceneflow_dataset(datum_config, is_training)
 
     return DataLoader(dataset, batch_size=data_config.loader.batch_size, **kwargs)
+
+
+def get_normalization_values(dataloader: DataLoader[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    means, sq_means = [], []
+    for data in dataloader:
+        means.append(data.mean(dim=(0, 2, 3)))
+        sq_means.append((data**2).mean(dim=(0, 2, 3)))
+
+    mean = torch.vstack(means).mean(dim=0)
+    std = torch.sqrt(torch.vstack(sq_means).mean(dim=0) - mean**2)
+
+    return mean, std
+
+
+@hydra.main(version_base=None, config_name="config")
+def main(cfg: stt.StereoNetConfig) -> int:
+    config: stt.StereoNetConfig = hydra.utils.instantiate(cfg, _convert_="all")['stereonet_config']
+
+    if config.training is None:
+        raise Exception("Need to provide training arguments to get normalization values.")
+
+    # Get training dataset
+    train_loader = construct_dataloaders(data_config=config.training,
+                                         is_training=True,
+                                         shuffle=False, num_workers=8, drop_last=False)
+    mean, std = get_normalization_values(train_loader)
+
+    print(f"{mean=}")
+    print(f"{std=}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

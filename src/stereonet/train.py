@@ -41,7 +41,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
     else:
         raise Exception("Unknown model type")
 
-    # # Get datasets
+    # Get datasets
     train_loader = std.construct_dataloaders(data_config=config.training,
                                              is_training=True,
                                              shuffle=True, num_workers=8, drop_last=False)
