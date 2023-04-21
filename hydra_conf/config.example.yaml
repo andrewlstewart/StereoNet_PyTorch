@@ -29,7 +29,7 @@ stereonet_config:
     fast_dev_run: false  # type=bool, help="Whether or not to run a fast dev run of the training loop"
     random_seed: null  # type=Optional[int], help="Seed to set the torch random generator for reproducible training runs"
     deterministic: null  # type=bool, help="Whether or not to set the PyTorch Lightning Trainer to deterministic mode"
-    mask: true  # type=bool, help="Whether or not to compute the loss for disparities larger than the model's max_disparities"
+    mask: null  # type=Optional[float], help="Whether or not to compute the loss for disparities larger than the mask value"
     min_epochs: 15  # type=int, help="Number of iterations of training over the full train dataset"
     max_epochs: 25  # type=int, help="Number of iterations of training over the full train dataset"
     optimizer_partial:
