@@ -167,7 +167,12 @@ class KeystoneDataset(Dataset[torch.Tensor]):
         min_height = min(left.shape[0], right.shape[0], disp_left.shape[0], disp_right.shape[0])
         min_width = min(left.shape[1], right.shape[1], disp_left.shape[1], disp_right.shape[1])
 
-        tensored = [torch.from_numpy(array).to(torch.float32) for array in (left, right, disp_left, disp_right)]
+        tensored: List[torch.Tensor] = []
+        for array in (left, right, disp_left, disp_right):
+            arr = torch.from_numpy(array).to(torch.float32)
+            if arr.ndim == 2:
+                arr = torch.unsqueeze(arr, dim=0)
+            tensored.append(arr)
 
         # Not sure if this is the best way to do this...
         # Keystone dataset sizes between left/right/disp_left/disp_right are inconsistent
