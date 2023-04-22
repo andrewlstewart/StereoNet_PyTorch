@@ -8,7 +8,7 @@ import hydra
 
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
 from stereonet.model import StereoNet
 import stereonet.datasets as std
@@ -52,7 +52,7 @@ def main(cfg: stt.StereoNetConfig) -> int:
                                                is_training=False,
                                                shuffle=False, num_workers=8, drop_last=False)
 
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(monitor='val_loss_epoch', save_top_k=-1, mode='min')
+    checkpoint_callback = ModelCheckpoint(monitor='val_loss_epoch', save_top_k=-1, mode='min')
 
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     logger = TensorBoardLogger(save_dir=config.logging.lightning_log_root, name="lightning_logs")
