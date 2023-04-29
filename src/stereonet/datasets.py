@@ -11,11 +11,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
-import cv2  # noqa: E402
 
-import stereonet.types as stt  # noqa: E402
-import stereonet.utils_io as stu  # noqa: E402
+import stereonet.types as stt
+import stereonet.utils_io as stu
 
 
 RNG = np.random.default_rng()
@@ -53,11 +51,11 @@ class SceneflowDataset(Dataset[torch.Tensor]):
         left = stu.image_loader(self.left_image_path[index])
         right = stu.image_loader(self.right_image_path[index])
 
-        disp_left, _ = stu.PFM_loader(self.left_disp_path[index])
+        disp_left, _ = stu.pfm_loader(self.left_disp_path[index])
         disp_left = disp_left[..., np.newaxis]
         disp_left = np.ascontiguousarray(disp_left)
 
-        disp_right, _ = stu.PFM_loader(self.right_disp_path[index])
+        disp_right, _ = stu.pfm_loader(self.right_disp_path[index])
         disp_right = disp_right[..., np.newaxis]
         disp_right = np.ascontiguousarray(disp_right)
 
@@ -151,28 +149,21 @@ class KeystoneDataset(Dataset[torch.Tensor]):
         left = stu.image_loader(os.path.join(self.root_path, self.left_image_path[index]))
         right = stu.image_loader(os.path.join(self.root_path, self.right_image_path[index]))
 
-        disp_left = cv2.imread(os.path.join(self.root_path, self.left_disp_path[index]), cv2.IMREAD_ANYDEPTH)
-        # disp_left = disp_left[..., np.newaxis]
+        disp_left = stu.exr_loader(os.path.join(self.root_path, self.left_disp_path[index]))
         disp_left = np.ascontiguousarray(disp_left)
 
-        disp_right = cv2.imread(os.path.join(self.root_path, self.right_disp_path[index]), cv2.IMREAD_ANYDEPTH)
-        # disp_right = disp_right[..., np.newaxis]
+        disp_right = stu.exr_loader(os.path.join(self.root_path, self.right_disp_path[index]))
         disp_right = np.ascontiguousarray(disp_right)
 
         assert left.dtype == np.uint8
         assert right.dtype == np.uint8
-        assert disp_left.dtype != np.uint8
-        assert disp_right.dtype != np.uint8
+        assert disp_left.dtype == np.float32
+        assert disp_right.dtype == np.float32
 
         min_height = min(left.shape[0], right.shape[0], disp_left.shape[0], disp_right.shape[0])
         min_width = min(left.shape[1], right.shape[1], disp_left.shape[1], disp_right.shape[1])
 
-        tensored: List[torch.Tensor] = []
-        for array in (left, right, disp_left, disp_right):
-            arr = torch.from_numpy(array).to(torch.float32)
-            if arr.ndim == 2:
-                arr = torch.unsqueeze(arr, dim=0)
-            tensored.append(arr)
+        tensored = [torch.from_numpy(array).to(torch.float32) for array in (left, right, disp_left, disp_right)]
 
         # Not sure if this is the best way to do this...
         # Keystone dataset sizes between left/right/disp_left/disp_right are inconsistent

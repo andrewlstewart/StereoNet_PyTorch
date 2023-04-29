@@ -4,13 +4,16 @@
 from typing import Tuple, Union
 from pathlib import Path
 import re
+import os
 
 import numpy as np
 import numpy.typing as npt
 from skimage import io
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+import cv2  # noqa: E402
 
 
-def PFM_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
+def pfm_loader(path: Union[Path, str]) -> Tuple[npt.NDArray[np.float32], float]:
     """
     This function was entirely written by the the Freiburg group
     https://lmb.informatik.uni-freiburg.de/resources/datasets/IO.py
@@ -52,4 +55,16 @@ def image_loader(path: Union[Path, str]) -> npt.NDArray[np.uint8]:
     Load an image from a path using skimage.io and return a np.uint8 numpy array.
     """
     img: npt.NDArray[np.uint8] = io.imread(path)
+    if img.ndim == 2:
+        img = np.expand_dims(img, axis=2)
+    return img
+
+
+def exr_loader(path: Union[Path, str]) -> npt.NDArray[np.float32]:
+    """
+    Load an image from a path using opencv and return a np.float32 numpy array.
+    """
+    img: npt.NDArray[np.float32] = cv2.imread(path, cv2.IMREAD_ANYDEPTH)
+    if img.ndim == 2:
+        img = np.expand_dims(img, axis=2)
     return img
