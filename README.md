@@ -14,51 +14,24 @@ pip install "git+https://github.com/andrewlstewart/StereoNet_PyTorch"
 How to perform the most basic inference:
 
 ```
-import tempfile
-import requests
-
 import numpy as np
-import numpy.typing as npt
 import torch
 
 from stereonet.model import StereoNet
 import stereonet.utils_io
 
-# Download the KeystoneDepth checkpoint (the checkpoint can obviously be downloaded and loaded directly from a local path)
-checkpoint_url = "https://www.dropbox.com/s/ffgeqyzk4kec9cf/epoch%3D21-step%3D696366.ckpt?dl=1"
-request = requests.get(checkpoint_url)
-assert request.status_code == 200
-
-# Load in the model from the trained checkpoint
-with tempfile.TemporaryDirectory() as temp_dir:
-    file_name = os.path.join(temp_dir, "model.ckpt")
-    with open(file_name, 'wb') as f:
-        f.write(request.content)
-    model = StereoNet.load_from_checkpoint(file_name)
-
-# Download the left and right images (similarly, the images can be loaded directly from a local path)
-left_image_url = "https://user-images.githubusercontent.com/7529012/235283430-9b05ff69-9644-4800-af83-9a26fd8d7e07.png"
-right_image_url = "https://user-images.githubusercontent.com/7529012/235283463-4607d39f-ff90-4abe-a345-4a626ecea9d3.png"
-
-images: npt.NDArray[np.float32] = []
-for url in (left_image_url, right_image_url):
-    request = requests.get(url)
-    assert request.status_code == 200
-    with tempfile.TemporaryDirectory() as temp_dir:
-        file_name = os.path.join(temp_dir, "model.ckpt")
-        with open(file_name, 'wb') as f:
-            f.write(request.content)
-        model = StereoNet.load_from_checkpoint(file_name)
-
 # Load in the image pair as numpy uint8 arrays, ensure the shapes are the same for both images for concatenation [Height, Width, Channels]
 # left = stereonet.utils_io.image_loader(path_to_left_rgb_image_file)  # [Height, Width, Channel] [0, 255] uint8
 # right = stereonet.utils_io.image_loader(path_to_left_rgb_image_file)  # [Height, Width, Channel] [0, 255] uint8
-# tensored = [torch.unsqueeze(torch.from_numpy(array).to(torch.float32), dim=0) for array in (left, right)]  [Channel, Height, Width] [0, 255] uint8
-# stack = torch.concatenate(tensored, dim=0)  # [Batch, Stacked left/right channels, Height, Width] [0, 255] float32
+# min_height = min(left.shape[0], right.shape[0])
+# min_width = min(left.shape[1], right.shape[1])
+# tensored = [torch.permute(torch.from_numpy(array).to(torch.float32).to(device), (2, 0, 1)) for array in (left, right)]  [Channel, Height, Width] [0, 255] uint8
+# cropper = torchvision.transforms.CenterCrop((min_height, min_width))
+# stack = torch.concatenate(list(map(cropper, tensored)), dim=0)  # [Stacked left/right channels, Height, Width] [0, 255] float32
 
 # Here just creating a random image
 # stack = torch.randint(0, 256, size=(1, 6, 540, 960), dtype=torch.float32)  # [Batch, Stacked left/right channels, Height, Width]  6 for 3 RGB x 2 images
-stack = torch.randint(0, 256, size=(1, 6, 540, 960), dtype=torch.float32)  # [Batch, Stacked left/right channels, Height, Width]  2 for 1 grayscale x 2 images
+stack = torch.randint(0, 256, size=(1, 2, 540, 960), dtype=torch.float32)  # [Batch, Stacked left/right channels, Height, Width]  2 for 1 grayscale x 2 images
 
 normalizer = torchvision.transforms.Normalize((111.5684, 113.6528), (61.9625, 62.0313))
 normalized = normalizer(stack)
