@@ -11,6 +11,11 @@ Install with:
 pip install "git+https://github.com/andrewlstewart/StereoNet_PyTorch"
 ```
 
+
+Example left image disparity generated from stereo image pair:
+
+![output](https://user-images.githubusercontent.com/7529012/235552448-b96f6023-7349-4f97-899f-fcdc9276e573.png)
+
 How to perform the most basic inference:
 
 ```
@@ -77,13 +82,26 @@ Older model checkpoint trained on Sceneflow corresponding with this [commit](htt
 
 Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
 
-Validation EPE <img src="https://render.githubusercontent.com/render/math?math=\approx 3.9"> pixels when using a maximum disparity mask of 256; ie. during training, no penalty is added to the loss value for disparities in the ground truth >256.
+Train and validation loss curves for the KeystoneDepth training run:
 
-Epoch 20:
+<img width="595" alt="KeystoneDepth_train_loss" src="https://user-images.githubusercontent.com/7529012/235552533-1758a358-bfbf-4972-a76a-a3cb3f830f8a.png">
+<img width="595" alt="KeystoneDepth_val_loss" src="https://user-images.githubusercontent.com/7529012/235552536-4aa0f242-00db-4da6-b14c-5343337e4014.png">
 
-<img src="./readme_images/Epoch_20_Val.JPG" alt="Validation image" style="width:1000px;"/>
+The above training run used:
+* train/val split ratio of 85%
+* 1 input channel (grayscale)
+* maximum disparity of 256
+* 3 downsampling (1/8 resolution) and 3 refinement layers
+* input image mean/std normalization using mean=(111.5684, 113.6528) & std=(61.9625, 62.0313)
+* batch size of 1
+* trained for a maximum of 25 epochs (lowest validation loss was at epoch 21)
+* RMSProp with a learning rate of 2.54e-4
+* Exponention LR scheduler with gamma=0.9
+* Maximum image side length of 625 with aspect ratio preserving resizing
 
-Implemented using PyTorch Lightning + Hydra as a learning exercise to learn about stereo networks, PyTorch, PyTorch Lightning, and Hydra.  Feel free to make any comments or recommendations for better coding practice.
+On a GTX 1070, wall clock time was about 5-6 hours per epoch or ~6-7 days of wall clock time to train.
+
+This project was implemented using PyTorch Lightning + Hydra as a learning exercise to learn about stereo networks, PyTorch, PyTorch Lightning, and Hydra.  Feel free to make any comments or recommendations for better coding practice.
 
 Currently implemented
 
