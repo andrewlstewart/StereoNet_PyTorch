@@ -66,12 +66,24 @@ KeystoneDepth checkpoint: https://www.dropbox.com/s/ffgeqyzk4kec9cf/epoch%3D21-s
 
 * Trained with this mean/std normalizer for left/right grayscale images: torchvision.transforms.Normalize((111.5684, 113.6528), (61.9625, 62.0313))
 * Model was trained on grayscale images and has in_channels=1
+* Train/val split ratio of 85%
 * Max disparity parameter during training = 256 with the mask applied
 * 3 downsampling (1/8 resolution) and 3 refinement layers
+* Batch size of 1
+* Trained for a maximum of 25 epochs (lowest validation loss was at epoch 21)
+* RMSProp with a learning rate of 2.54e-4
+* Exponention LR scheduler with gamma=0.9
+* Maximum image side length of 625 with aspect ratio preserving resizing
 * Validation EPE of 1.543 for all pixels (including >256).
 
-Older model checkpoint trained on Sceneflow corresponding with this [commit](https://github.com/andrewlstewart/StereoNet_PyTorch/tree/9c0260f270547d8001e9d637cf3a94658f805bae): https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
+Train and validation loss curves for the KeystoneDepth training run:
 
+<img width="595" alt="KeystoneDepth_train_loss" src="https://user-images.githubusercontent.com/7529012/235552533-1758a358-bfbf-4972-a76a-a3cb3f830f8a.png">
+<img width="595" alt="KeystoneDepth_val_loss" src="https://user-images.githubusercontent.com/7529012/235552536-4aa0f242-00db-4da6-b14c-5343337e4014.png">
+
+On a GTX 1070, wall clock time was about 5-6 hours per epoch or ~6-7 days of wall clock time to train.
+
+Older model checkpoint trained on Sceneflow corresponding with this [commit](https://github.com/andrewlstewart/StereoNet_PyTorch/tree/9c0260f270547d8001e9d637cf3a94658f805bae): https://www.dropbox.com/s/9gpjfe3r1rfch02/epoch%3D20-step%3D744533.ckpt?dl=0
 
 * Model was trained on RGB images and has in_channels=3
 * Max disparity parameter during training = 256 with the mask applied
@@ -80,26 +92,7 @@ Older model checkpoint trained on Sceneflow corresponding with this [commit](htt
 
 ## Notes
 
-Implementation of the StereoNet network to compute a disparity map using stereo RGB images.
-
-Train and validation loss curves for the KeystoneDepth training run:
-
-<img width="595" alt="KeystoneDepth_train_loss" src="https://user-images.githubusercontent.com/7529012/235552533-1758a358-bfbf-4972-a76a-a3cb3f830f8a.png">
-<img width="595" alt="KeystoneDepth_val_loss" src="https://user-images.githubusercontent.com/7529012/235552536-4aa0f242-00db-4da6-b14c-5343337e4014.png">
-
-The above training run used:
-* train/val split ratio of 85%
-* 1 input channel (grayscale)
-* maximum disparity of 256
-* 3 downsampling (1/8 resolution) and 3 refinement layers
-* input image mean/std normalization using mean=(111.5684, 113.6528) & std=(61.9625, 62.0313)
-* batch size of 1
-* trained for a maximum of 25 epochs (lowest validation loss was at epoch 21)
-* RMSProp with a learning rate of 2.54e-4
-* Exponention LR scheduler with gamma=0.9
-* Maximum image side length of 625 with aspect ratio preserving resizing
-
-On a GTX 1070, wall clock time was about 5-6 hours per epoch or ~6-7 days of wall clock time to train.
+Implementation of the StereoNet network to compute a disparity map using stereo images.
 
 This project was implemented using PyTorch Lightning + Hydra as a learning exercise to learn about stereo networks, PyTorch, PyTorch Lightning, and Hydra.  Feel free to make any comments or recommendations for better coding practice.
 
